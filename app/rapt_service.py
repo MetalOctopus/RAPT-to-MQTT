@@ -146,28 +146,53 @@ class RaptBridge:
         """Process incoming TILT hydrometer data from MQTT."""
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
-            temp_f = payload.get("major")
-            sg_x1000 = payload.get("minor")
 
-            if temp_f is None or sg_x1000 is None:
+            # Support both old format (major/minor) and new enriched format
+            if "sg" in payload:
+                # New enriched format
+                sg = float(payload["sg"])
+                temp_c = round((float(payload.get("temperature_raw", 0)) - 32) * 5 / 9, 1)
+                temp_f = float(payload.get("temperature_raw", 0))
+                color = payload.get("color", "Unknown")
+                beer = payload.get("beer", "")
+                rssi = payload.get("rssi")
+                mac = payload.get("mac", "")
+                uuid = payload.get("uuid", "")
+            elif "major" in payload and "minor" in payload:
+                # Old format: {major: temp_f, minor: sg*1000}
+                temp_f = float(payload["major"])
+                sg = float(payload["minor"]) / 1000.0
+                temp_c = round((temp_f - 32) * 5 / 9, 1)
+                color = "Unknown"
+                beer = ""
+                rssi = None
+                mac = ""
+                uuid = ""
+            else:
                 return
 
-            sg = sg_x1000 / 1000.0
-            temp_c = round((temp_f - 32) * 5 / 9, 1)
+            name = f"TILT {color}" if color != "Unknown" else "TILT Hydrometer"
+            if beer:
+                name += f" ({beer})"
 
             self._logger.info(
-                f"TILT | Temp: {temp_f}°F ({temp_c}°C) | SG: {sg:.4f}"
+                f"TILT {color} | Temp: {temp_f}°F ({temp_c}°C) | SG: {round(sg * 1000)}"
             )
 
             device = {
                 "id": "tilt-hydrometer",
-                "name": "TILT Hydrometer",
+                "name": name,
                 "deviceType": "TILT",
                 "temperature": temp_c,
                 "temperature_f": temp_f,
                 "specificGravity": sg,
                 "connectionState": "Connected",
                 "tempUnit": "C",
+                "macAddress": mac,
+                "rssi": rssi,
+                "tiltColor": color,
+                "tiltBeer": beer,
+                "tiltUuid": uuid,
                 "_last_seen": datetime.now().isoformat(),
                 "_source": "mqtt",
             }

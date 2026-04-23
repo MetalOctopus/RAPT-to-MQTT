@@ -250,12 +250,12 @@ function renderDevice(dev) {
 
   // Temperature cards
   if (isTilt) {
-    const tempStr = dev.temperature_f != null
-      ? dev.temperature_f + "°F (" + formatTemp(dev.temperature, "C") + ")"
-      : formatTemp(dev.temperature, unit);
+    const tempStr = dev.temperature != null
+      ? formatTemp(dev.temperature, "C") + " (" + dev.temperature_f + "°F)"
+      : "—";
     document.getElementById("device-current-temp").textContent = tempStr;
     document.getElementById("device-gravity").textContent =
-      dev.specificGravity != null ? dev.specificGravity.toFixed(4) : "—";
+      dev.specificGravity != null ? Math.round(dev.specificGravity * 1000) : "—";
   } else {
     document.getElementById("device-current-temp").textContent = formatTemp(dev.temperature, unit);
     document.getElementById("device-target-temp").textContent = formatTemp(dev.targetTemperature, unit);
@@ -388,7 +388,7 @@ async function updateDashboardCards() {
       if (isTilt && dev.specificGravity != null) {
         html += `<div class="dash-metric">
           <span class="dash-metric-label">SG</span>
-          <span class="dash-metric-value">${dev.specificGravity.toFixed(4)}</span>
+          <span class="dash-metric-value">${Math.round(dev.specificGravity * 1000)}</span>
         </div>`;
       }
 
