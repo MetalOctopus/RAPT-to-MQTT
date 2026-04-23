@@ -17,9 +17,10 @@ class RaptBridge:
     COMMAND_TOPIC = "RAPT/temperatureController/Command"
     TILT_TOPIC = "TiltPi"
 
-    def __init__(self, config, logger):
+    def __init__(self, config, logger, history=None):
         self._config = config
         self._logger = logger
+        self._history = history
         self._stop_event = threading.Event()
         self._thread = None
         self._mqtt_client = None
@@ -200,6 +201,15 @@ class RaptBridge:
             with self._devices_lock:
                 self._devices["tilt-hydrometer"] = device
 
+            # Record history
+            if self._history:
+                self._history.record("tilt-hydrometer", {
+                    "temperature": temp_c,
+                    "temperature_f": temp_f,
+                    "specificGravity": sg * 1000,
+                    "rssi": rssi if rssi else None,
+                })
+
         except Exception as e:
             self._logger.error(f"Error processing TILT message: {e}")
 
@@ -294,21 +304,51 @@ class RaptBridge:
         })
         self._mqtt_client.publish(self.PUBLISH_TOPIC, payload)
 
+        # Record history
+        if self._history:
+            for ctrl in response:
+                cid = ctrl["id"]
+                self._history.record(cid, {
+                    "temperature": ctrl.get("temperature"),
+                    "targetTemperature": ctrl.get("targetTemperature"),
+                    "rssi": ctrl.get("rssi"),
+                    "coolingEnabled": 1 if ctrl.get("coolingEnabled") else 0,
+                    "heatingEnabled": 1 if ctrl.get("heatingEnabled") else 0,
+                })
+
         return device_id
 
+    def set_target_temperature(self, target, device_id=None):
+        """Public method to set target temperature. Used by brew feedback loop."""
+        if not device_id:
+            # Use first known controller
+            with self._devices_lock:
+                for did, dev in self._devices.items():
+                    if dev.get("deviceType") != "TILT":
+                        device_id = did
+                        break
+        if not device_id:
+            self._logger.error("Cannot set temperature: no controller found.")
+            return
+        self._set_temperature_for_device(target, device_id)
+
     def _set_temperature(self, target):
-        """Set target temperature on the RAPT controller."""
+        """Set target temperature via MQTT command (legacy)."""
         device_id = self._update_mqtt()
         if not device_id:
             self._logger.error("Cannot set temperature: no controller found.")
             return
+        self._set_temperature_for_device(target, device_id)
 
+    def _set_temperature_for_device(self, target, device_id):
+        """Set target temperature on a specific RAPT controller."""
         url = f"{self.API_ENDPOINT}TemperatureControllers/SetTargetTemperature"
         payload = {
             "temperatureControllerId": device_id,
             "target": target,
         }
 
+        self._logger.info(f"Setting target temperature to {target}°C...")
         r = requests.post(url, data=payload, headers=self._headers)
         r.raise_for_status()
         response = r.json()

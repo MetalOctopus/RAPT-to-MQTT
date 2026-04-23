@@ -454,6 +454,153 @@ pre.code-block {
   margin: 8px 0;
 }
 
+/* --- Sub-tabs --- */
+.sub-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #21262d;
+  margin-bottom: 16px;
+}
+
+.sub-tab {
+  padding: 10px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #8b949e;
+  font-size: 0.85em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.sub-tab:hover {
+  color: #c9d1d9;
+}
+
+.sub-tab.active {
+  color: #58a6ff;
+  border-bottom-color: #58a6ff;
+}
+
+.subtab-content {
+  display: none;
+}
+
+.subtab-content.active {
+  display: block;
+}
+
+/* --- Chart controls & containers --- */
+.chart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+}
+
+.chart-controls .form-group {
+  min-width: 120px;
+}
+
+.chart-controls select {
+  width: 100%;
+}
+
+.chart-container {
+  position: relative;
+  height: 300px;
+  width: 100%;
+}
+
+/* --- Gauge --- */
+.gauge-container {
+  padding: 8px 0;
+}
+
+.gauge-bar {
+  height: 24px;
+  background: #21262d;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.gauge-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #238636, #2ea043, #f0883e, #da3633);
+  border-radius: 12px;
+  transition: width 0.6s ease;
+  width: 0%;
+}
+
+.gauge-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 0.75em;
+  color: #8b949e;
+}
+
+/* --- Info tips --- */
+.info-tip {
+  display: inline-block;
+  cursor: help;
+  color: #484f58;
+  font-size: 0.85em;
+  vertical-align: middle;
+  position: relative;
+}
+
+.info-tip:hover {
+  color: #8b949e;
+}
+
+/* --- Brew events --- */
+.brew-event {
+  padding: 8px 0;
+  border-bottom: 1px solid #21262d;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+
+.brew-event:last-child {
+  border-bottom: none;
+}
+
+.brew-event-time {
+  color: #484f58;
+  font-size: 0.8em;
+  margin-right: 8px;
+}
+
+.brew-event strong {
+  color: #e6edf3;
+}
+
+/* --- Brew history items --- */
+.brew-history-item {
+  padding: 8px 0;
+  border-bottom: 1px solid #21262d;
+  font-size: 0.85em;
+}
+
+.brew-history-item:last-child {
+  border-bottom: none;
+}
+
+.brew-history-item strong {
+  color: #e6edf3;
+}
+
+/* --- Dim values --- */
+.dim-value {
+  color: #484f58 !important;
+  font-size: 0.85em !important;
+  font-weight: 400 !important;
+}
+
 /* --- Dashboard --- */
 .checkbox-list {
   display: flex;
@@ -517,6 +664,17 @@ pre.code-block {
   color: #f0883e;
 }
 
+.dash-metric-updated {
+  flex-basis: 100%;
+  margin-top: 4px;
+}
+
+/* --- Brew event buttons --- */
+.brew-event-btn {
+  font-size: 0.8em;
+  padding: 6px 14px;
+}
+
 /* --- Responsive --- */
 @media (max-width: 768px) {
   .sidebar {
@@ -532,6 +690,13 @@ pre.code-block {
   }
   .device-grid {
     grid-template-columns: 1fr 1fr;
+  }
+  .chart-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .chart-container {
+    height: 250px;
   }
 }
 
@@ -552,5 +717,14 @@ pre.code-block {
   }
   .device-grid {
     grid-template-columns: 1fr;
+  }
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .sub-tabs {
+    overflow-x: auto;
+  }
+  .chart-container {
+    height: 200px;
   }
 }
