@@ -158,7 +158,13 @@ function formatSeconds(secs) {
   if (s < 3600) return Math.floor(s / 60) + "m " + (s % 60) + "s";
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
-  return h + "h " + m + "m";
+  if (h < 24) return h + "h " + m + "m";
+  const d = Math.floor(h / 24);
+  const rh = h % 24;
+  if (d < 365) return d + "d " + rh + "h";
+  const y = Math.floor(d / 365);
+  const rd = d % 365;
+  return y + "y " + rd + "d";
 }
 
 function formatTemp(val, unit) {
