@@ -15,6 +15,7 @@ class RaptBridge:
     TOKEN_URL = "https://id.rapt.io/connect/token"
     PUBLISH_TOPIC = "RAPT/temperatureController"
     COMMAND_TOPIC = "RAPT/temperatureController/Command"
+    TILT_TOPIC = "TiltPi"
 
     def __init__(self, config, logger):
         self._config = config
@@ -117,6 +118,8 @@ class RaptBridge:
             self._logger.info("Connected to MQTT broker.")
             client.subscribe(self.COMMAND_TOPIC)
             self._logger.info(f"Subscribed to {self.COMMAND_TOPIC}")
+            client.subscribe(self.TILT_TOPIC)
+            self._logger.info(f"Subscribed to {self.TILT_TOPIC}")
         else:
             self._logger.error(f"MQTT connection failed with code {rc}")
 
@@ -126,6 +129,10 @@ class RaptBridge:
 
     def _on_message(self, client, userdata, msg):
         try:
+            if msg.topic == self.TILT_TOPIC:
+                self._handle_tilt_message(msg)
+                return
+
             payload = msg.payload.decode("utf-8")
             # Original format: payload is "Temperature" : "xx.xx" (without braces)
             target_temp = json.loads("{" + payload + "}")
@@ -134,6 +141,42 @@ class RaptBridge:
             self._set_temperature(target_temp)
         except Exception as e:
             self._logger.error(f"Error processing MQTT command: {e}")
+
+    def _handle_tilt_message(self, msg):
+        """Process incoming TILT hydrometer data from MQTT."""
+        try:
+            payload = json.loads(msg.payload.decode("utf-8"))
+            temp_f = payload.get("major")
+            sg_x1000 = payload.get("minor")
+
+            if temp_f is None or sg_x1000 is None:
+                return
+
+            sg = sg_x1000 / 1000.0
+            temp_c = round((temp_f - 32) * 5 / 9, 1)
+
+            self._logger.info(
+                f"TILT | Temp: {temp_f}°F ({temp_c}°C) | SG: {sg:.4f}"
+            )
+
+            device = {
+                "id": "tilt-hydrometer",
+                "name": "TILT Hydrometer",
+                "deviceType": "TILT",
+                "temperature": temp_c,
+                "temperature_f": temp_f,
+                "specificGravity": sg,
+                "connectionState": "Connected",
+                "tempUnit": "C",
+                "_last_seen": datetime.now().isoformat(),
+                "_source": "mqtt",
+            }
+
+            with self._devices_lock:
+                self._devices["tilt-hydrometer"] = device
+
+        except Exception as e:
+            self._logger.error(f"Error processing TILT message: {e}")
 
     def _update_token(self):
         """Request a new auth token from the RAPT API."""

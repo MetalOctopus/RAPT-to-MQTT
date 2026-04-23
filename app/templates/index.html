@@ -27,6 +27,8 @@
     <div class="nav-section">
       <div class="nav-label">Navigation</div>
       <a class="nav-item active" data-page="config" href="#">Config</a>
+      <a class="nav-item" data-page="dashboard" href="#">Dashboard</a>
+      <a class="nav-item" data-page="help" href="#">Help</a>
     </div>
 
     <div class="nav-section">
@@ -107,15 +109,19 @@
           <div class="card-label">Current Temperature</div>
           <div class="card-value" id="device-current-temp">—</div>
         </div>
-        <div class="device-card primary">
+        <div class="device-card primary" id="card-target-temp">
           <div class="card-label">Target Temperature</div>
           <div class="card-value" id="device-target-temp">—</div>
         </div>
-        <div class="device-card">
+        <div class="device-card primary" id="card-gravity" style="display:none">
+          <div class="card-label">Specific Gravity</div>
+          <div class="card-value" id="device-gravity">—</div>
+        </div>
+        <div class="device-card" id="card-cooling">
           <div class="card-label">Cooling</div>
           <div class="card-value" id="device-cooling">—</div>
         </div>
-        <div class="device-card">
+        <div class="device-card" id="card-heating">
           <div class="card-label">Heating</div>
           <div class="card-value" id="device-heating">—</div>
         </div>
@@ -137,7 +143,7 @@
         </table>
       </div>
 
-      <div class="panel">
+      <div class="panel rapt-only">
         <h2>Runtime Stats</h2>
         <table class="info-table">
           <tr><td>Total Runtime</td><td id="stats-total">—</td></tr>
@@ -148,7 +154,7 @@
         </table>
       </div>
 
-      <div class="panel">
+      <div class="panel rapt-only">
         <h2>Controller Settings</h2>
         <table class="info-table">
           <tr><td>PID Enabled</td><td id="settings-pid">—</td></tr>
@@ -159,6 +165,160 @@
           <tr><td>High Temp Alarm</td><td id="settings-high-alarm">—</td></tr>
           <tr><td>Low Temp Alarm</td><td id="settings-low-alarm">—</td></tr>
           <tr><td>Bluetooth</td><td id="settings-bluetooth">—</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Dashboard Page -->
+    <div id="page-dashboard" class="page">
+      <div class="panel">
+        <div class="controls">
+          <h2 style="margin-bottom:0">Dashboard</h2>
+        </div>
+        <p class="help-text">Select devices to monitor. Values refresh automatically.</p>
+        <div id="dashboard-device-select" class="checkbox-list"></div>
+      </div>
+
+      <div id="dashboard-cards" class="dashboard-grid"></div>
+    </div>
+
+    <!-- Help Page -->
+    <div id="page-help" class="page">
+      <div class="panel">
+        <h2>RAPT2MQTT</h2>
+        <p>Bridge between <strong>RAPT</strong> (Kegland) brewing devices and <strong>MQTT</strong> for Home Assistant and other home automation platforms.</p>
+        <p>The bridge polls the RAPT cloud API for temperature controller data and publishes it to your MQTT broker. It also listens for TILT hydrometer data on MQTT.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Getting Started</h2>
+        <ol class="help-list">
+          <li>Go to <strong>Config</strong> and enter your MQTT broker address and port.</li>
+          <li>Enter your <strong>RAPT email</strong> and <strong>API Secret</strong>. You can create an API secret in the <a href="https://app.rapt.io" target="_blank">RAPT Portal</a> under My Account &gt; API Secrets.</li>
+          <li>Set the <strong>Poll Interval</strong> (default 300s). The RAPT API has no official rate limit, but polling faster than 60s is not recommended.</li>
+          <li>Click <strong>Save Configuration</strong>, then <strong>Start</strong> the bridge.</li>
+          <li>Your RAPT devices will appear in the sidebar as they are discovered.</li>
+        </ol>
+      </div>
+
+      <div class="panel">
+        <h2>MQTT Topics</h2>
+        <table class="info-table">
+          <tr>
+            <td>RAPT Data</td>
+            <td><code>RAPT/temperatureController</code></td>
+          </tr>
+          <tr>
+            <td>RAPT Commands</td>
+            <td><code>RAPT/temperatureController/Command</code></td>
+          </tr>
+          <tr>
+            <td>TILT Data (inbound)</td>
+            <td><code>TiltPi</code></td>
+          </tr>
+        </table>
+        <h3 style="margin-top:16px">RAPT Payload Example</h3>
+        <pre class="code-block">{
+  "device_id": "abc-123",
+  "name": "Fermenter",
+  "current_temp": "18.50",
+  "target_temp": "18.00",
+  "cooling_enabled": true,
+  "heating_enabled": false,
+  "connection_state": "Connected",
+  "rssi": -65
+}</pre>
+        <h3 style="margin-top:16px">Set Temperature Command</h3>
+        <p>Publish to <code>RAPT/temperatureController/Command</code>:</p>
+        <pre class="code-block">"Temperature" : "20.00"</pre>
+      </div>
+
+      <div class="panel">
+        <h2>TILT Hydrometer Integration</h2>
+        <p>RAPT2MQTT can display live data from a <strong>TILT hydrometer</strong> if it publishes to your MQTT broker. The bridge listens on the <code>TiltPi</code> topic.</p>
+
+        <h3>What is TILT?</h3>
+        <p>The TILT is a free-floating Bluetooth hydrometer that measures <strong>specific gravity</strong> and <strong>temperature</strong> inside your fermenter. It broadcasts via BLE (no WiFi), so it needs a bridge device to reach your network.</p>
+
+        <h3 style="margin-top:16px">Option 1: TiltPi + Custom MQTT Node (Recommended if you already have a TiltPi)</h3>
+        <p>TiltPi is a Raspberry Pi running Node-RED that reads TILT BLE data. It does <strong>not</strong> publish to MQTT by default, but adding it is straightforward:</p>
+        <ol class="help-list">
+          <li>Open your TiltPi Node-RED editor at <code>http://tiltpi.local:1880</code></li>
+          <li>Find the <strong>ui_template</strong> node for your TILT color (the display card that shows temperature and SG)</li>
+          <li>Add a <strong>function</strong> node after it with this code:
+            <pre class="code-block">msg.topic = "TiltPi";
+msg.payload = JSON.stringify({
+  major: parseFloat(msg.payload.displayTemp || 0),
+  minor: Math.round((parseFloat(msg.payload.SG) || 0) * 1000)
+});
+return msg;</pre>
+          </li>
+          <li>Optionally add an <strong>rbe</strong> (Report By Exception) node after the function to only send on changes</li>
+          <li>Add an <strong>mqtt out</strong> node. Configure it with:
+            <ul>
+              <li><strong>Server:</strong> Your MQTT broker address (same one configured in RAPT2MQTT)</li>
+              <li><strong>Topic:</strong> <code>TiltPi</code></li>
+              <li><strong>QoS:</strong> 0</li>
+            </ul>
+          </li>
+          <li>Wire: <code>ui_template → function → rbe → mqtt out</code></li>
+          <li>Click <strong>Deploy</strong></li>
+        </ol>
+
+        <h3 style="margin-top:16px">Option 2: TiltBridge (ESP32)</h3>
+        <p>If you don't have a TiltPi, a <strong>TiltBridge</strong> is a cheap (~$10) ESP32 board that scans for TILT BLE and publishes to MQTT natively.</p>
+        <ol class="help-list">
+          <li>Flash <a href="https://github.com/thorrak/tiltbridge" target="_blank">TiltBridge firmware</a> onto an ESP32</li>
+          <li>Configure it to publish to your MQTT broker</li>
+          <li>TiltBridge publishes to <code>tiltbridge/tilt_&lt;Color&gt;</code> by default — you may need to adapt the topic or add a Node-RED rule to reformat for RAPT2MQTT</li>
+        </ol>
+
+        <h3 style="margin-top:16px">Payload Format</h3>
+        <p>RAPT2MQTT expects this JSON on the <code>TiltPi</code> topic:</p>
+        <pre class="code-block">{
+  "major": 68.0,
+  "minor": 1050
+}</pre>
+        <table class="info-table" style="margin-top:8px">
+          <tr><td><code>major</code></td><td>Temperature (calibrated, typically &deg;F)</td></tr>
+          <tr><td><code>minor</code></td><td>Specific Gravity &times; 1000 (e.g. 1050 = SG 1.050)</td></tr>
+        </table>
+
+        <h3 style="margin-top:16px">TILT Colors</h3>
+        <p>TILTs come in 8 colors, each with a unique Bluetooth UUID. If you have multiple TILTs, you'll need to modify the Node-RED flow to include the color in the topic or payload.</p>
+        <table class="info-table">
+          <tr><td>Red</td><td><code>A495BB10...</code></td></tr>
+          <tr><td>Green</td><td><code>A495BB20...</code></td></tr>
+          <tr><td>Black</td><td><code>A495BB30...</code></td></tr>
+          <tr><td>Purple</td><td><code>A495BB40...</code></td></tr>
+          <tr><td>Orange</td><td><code>A495BB50...</code></td></tr>
+          <tr><td>Blue</td><td><code>A495BB60...</code></td></tr>
+          <tr><td>Yellow</td><td><code>A495BB70...</code></td></tr>
+          <tr><td>Pink</td><td><code>A495BB80...</code></td></tr>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Supported RAPT Devices</h2>
+        <p>The RAPT API supports these device types. Currently RAPT2MQTT bridges <strong>Temperature Controllers</strong>; more device types are planned.</p>
+        <table class="info-table">
+          <tr><td>Temperature Controller</td><td>Heating/cooling relay, PID, target temp</td></tr>
+          <tr><td>RAPT Pill</td><td>Floating hydrometer (gravity, temp, battery)</td></tr>
+          <tr><td>Fermentation Chamber</td><td>Integrated cooling/heating unit</td></tr>
+          <tr><td>BrewZilla Gen 4</td><td>All-in-one brewing system</td></tr>
+          <tr><td>RAPT Still</td><td>Distillation controller</td></tr>
+          <tr><td>Can &amp; Bottle Filler</td><td>Fill tracking</td></tr>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Links</h2>
+        <table class="info-table">
+          <tr><td>GitHub</td><td><a href="https://github.com/MetalOctopus/RAPT-to-MQTT" target="_blank">MetalOctopus/RAPT-to-MQTT</a></td></tr>
+          <tr><td>RAPT Portal</td><td><a href="https://app.rapt.io" target="_blank">app.rapt.io</a></td></tr>
+          <tr><td>RAPT API Docs</td><td><a href="https://api.rapt.io/index.html" target="_blank">api.rapt.io/index.html</a></td></tr>
+          <tr><td>TiltBridge</td><td><a href="https://github.com/thorrak/tiltbridge" target="_blank">thorrak/tiltbridge</a></td></tr>
+          <tr><td>TiltPi</td><td><a href="https://github.com/baronbrew/TILTpi" target="_blank">baronbrew/TILTpi</a></td></tr>
         </table>
       </div>
     </div>

@@ -386,6 +386,137 @@ button:disabled {
 .toast.error { background: #da3633; }
 .toast.show { opacity: 1; }
 
+/* --- Help page --- */
+.help-text {
+  font-size: 0.85em;
+  color: #8b949e;
+  margin-bottom: 12px;
+}
+
+.help-list {
+  padding-left: 20px;
+  font-size: 0.85em;
+  line-height: 1.8;
+  color: #c9d1d9;
+}
+
+.help-list li {
+  margin-bottom: 8px;
+}
+
+.help-list ul {
+  padding-left: 20px;
+  margin-top: 4px;
+}
+
+.panel p {
+  font-size: 0.85em;
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.panel h3 {
+  font-size: 0.9em;
+  font-weight: 600;
+  color: #e6edf3;
+  margin-bottom: 8px;
+}
+
+.panel a {
+  color: #58a6ff;
+  text-decoration: none;
+}
+
+.panel a:hover {
+  text-decoration: underline;
+}
+
+code {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.9em;
+  color: #e6edf3;
+}
+
+pre.code-block {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 12px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.8em;
+  line-height: 1.5;
+  color: #7ee787;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+/* --- Dashboard --- */
+.checkbox-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.dash-check {
+  font-size: 0.85em;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.dash-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.dash-card-header strong {
+  color: #e6edf3;
+  font-size: 0.95em;
+}
+
+.dash-card-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.dash-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dash-metric-label {
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #8b949e;
+}
+
+.dash-metric-value {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: #58a6ff;
+}
+
+.dash-metric-value.active-cool {
+  color: #79c0ff;
+}
+
+.dash-metric-value.active-heat {
+  color: #f0883e;
+}
+
 /* --- Responsive --- */
 @media (max-width: 768px) {
   .sidebar {

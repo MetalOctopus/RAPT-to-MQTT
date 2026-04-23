@@ -15,11 +15,14 @@ function showPage(page, deviceId) {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
 
-  if (page === "config") {
-    document.getElementById("page-config").classList.add("active");
-    document.querySelector('[data-page="config"]').classList.add("active");
-    currentPage = "config";
+  if (page === "config" || page === "dashboard" || page === "help") {
+    const pageEl = document.getElementById("page-" + page);
+    if (pageEl) pageEl.classList.add("active");
+    const navItem = document.querySelector(`[data-page="${page}"]`);
+    if (navItem) navItem.classList.add("active");
+    currentPage = page;
     currentDeviceId = null;
+    if (page === "dashboard") refreshDashboard();
   } else if (page === "device" && deviceId) {
     document.getElementById("page-device").classList.add("active");
     const navItem = document.querySelector(`.nav-item[data-device="${deviceId}"]`);
@@ -222,6 +225,7 @@ async function loadDevice(deviceId) {
 
 function renderDevice(dev) {
   const unit = dev.tempUnit || "C";
+  const isTilt = dev.deviceType === "TILT";
 
   // Header
   document.getElementById("device-name").textContent = dev.name || "Unknown Device";
@@ -231,11 +235,27 @@ function renderDevice(dev) {
   connBadge.textContent = isOnline ? "Online" : "Offline";
   connBadge.className = "badge " + (isOnline ? "online" : "offline");
 
+  // Show/hide cards based on device type
+  document.getElementById("card-target-temp").style.display = isTilt ? "none" : "";
+  document.getElementById("card-gravity").style.display = isTilt ? "" : "none";
+  document.getElementById("card-cooling").style.display = isTilt ? "none" : "";
+  document.getElementById("card-heating").style.display = isTilt ? "none" : "";
+  document.querySelectorAll(".rapt-only").forEach(el => el.style.display = isTilt ? "none" : "");
+
   // Temperature cards
-  document.getElementById("device-current-temp").textContent = formatTemp(dev.temperature, unit);
-  document.getElementById("device-target-temp").textContent = formatTemp(dev.targetTemperature, unit);
-  document.getElementById("device-cooling").textContent = boolText(dev.coolingEnabled);
-  document.getElementById("device-heating").textContent = boolText(dev.heatingEnabled);
+  if (isTilt) {
+    const tempStr = dev.temperature_f != null
+      ? dev.temperature_f + "°F (" + formatTemp(dev.temperature, "C") + ")"
+      : formatTemp(dev.temperature, unit);
+    document.getElementById("device-current-temp").textContent = tempStr;
+    document.getElementById("device-gravity").textContent =
+      dev.specificGravity != null ? dev.specificGravity.toFixed(4) : "—";
+  } else {
+    document.getElementById("device-current-temp").textContent = formatTemp(dev.temperature, unit);
+    document.getElementById("device-target-temp").textContent = formatTemp(dev.targetTemperature, unit);
+    document.getElementById("device-cooling").textContent = boolText(dev.coolingEnabled);
+    document.getElementById("device-heating").textContent = boolText(dev.heatingEnabled);
+  }
 
   // Device info table
   document.getElementById("info-name").textContent = dev.name || "—";
@@ -286,10 +306,127 @@ function initConsole() {
   source.onerror = () => {};
 }
 
-/* --- Nav click handler --- */
-document.querySelector('[data-page="config"]').addEventListener("click", (e) => {
-  e.preventDefault();
-  showPage("config");
+/* --- Dashboard --- */
+let dashboardEnabled = {}; // deviceId -> bool
+
+function refreshDashboard() {
+  updateDashboardSelect();
+  updateDashboardCards();
+}
+
+async function updateDashboardSelect() {
+  try {
+    const res = await fetch("/api/devices");
+    const devices = await res.json();
+    const container = document.getElementById("dashboard-device-select");
+    const ids = Object.keys(devices);
+
+    if (ids.length === 0) {
+      container.innerHTML = '<span class="help-text">No devices discovered yet. Start the bridge first.</span>';
+      return;
+    }
+
+    ids.forEach(id => {
+      if (container.querySelector(`[data-dash-device="${id}"]`)) return;
+      const dev = devices[id];
+      const label = document.createElement("label");
+      label.className = "checkbox-group dash-check";
+      label.setAttribute("data-dash-device", id);
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = dashboardEnabled[id] !== false;
+      cb.addEventListener("change", () => {
+        dashboardEnabled[id] = cb.checked;
+        updateDashboardCards();
+      });
+      if (!(id in dashboardEnabled)) dashboardEnabled[id] = true;
+      const span = document.createElement("span");
+      span.textContent = dev.name || id.substring(0, 8);
+      label.appendChild(cb);
+      label.appendChild(span);
+      container.appendChild(label);
+    });
+  } catch (e) {}
+}
+
+async function updateDashboardCards() {
+  try {
+    const res = await fetch("/api/devices");
+    const devices = await res.json();
+    const container = document.getElementById("dashboard-cards");
+    container.innerHTML = "";
+
+    Object.keys(devices).forEach(id => {
+      if (dashboardEnabled[id] === false) return;
+      const dev = devices[id];
+      const isTilt = dev.deviceType === "TILT";
+      const unit = dev.tempUnit || "C";
+
+      const card = document.createElement("div");
+      card.className = "panel dash-card";
+
+      const name = dev.name || id.substring(0, 8);
+      const connState = (dev.connectionState || "").toLowerCase();
+      const isOnline = connState === "connected" || connState === "online";
+
+      let html = `<div class="dash-card-header">
+        <strong>${esc(name)}</strong>
+        <span class="badge ${isOnline ? 'online' : 'offline'}">${isOnline ? 'Online' : 'Offline'}</span>
+      </div><div class="dash-card-metrics">`;
+
+      html += `<div class="dash-metric">
+        <span class="dash-metric-label">Temp</span>
+        <span class="dash-metric-value">${formatTemp(dev.temperature, unit)}</span>
+      </div>`;
+
+      if (isTilt && dev.specificGravity != null) {
+        html += `<div class="dash-metric">
+          <span class="dash-metric-label">SG</span>
+          <span class="dash-metric-value">${dev.specificGravity.toFixed(4)}</span>
+        </div>`;
+      }
+
+      if (!isTilt) {
+        html += `<div class="dash-metric">
+          <span class="dash-metric-label">Target</span>
+          <span class="dash-metric-value">${formatTemp(dev.targetTemperature, unit)}</span>
+        </div>`;
+        if (dev.coolingEnabled) {
+          html += `<div class="dash-metric"><span class="dash-metric-label">Cooling</span><span class="dash-metric-value active-cool">Active</span></div>`;
+        }
+        if (dev.heatingEnabled) {
+          html += `<div class="dash-metric"><span class="dash-metric-label">Heating</span><span class="dash-metric-value active-heat">Active</span></div>`;
+        }
+      }
+
+      const lastSeen = dev._last_seen || dev.lastActivityTime;
+      if (lastSeen) {
+        const ago = Math.round((Date.now() - new Date(lastSeen).getTime()) / 1000);
+        html += `<div class="dash-metric">
+          <span class="dash-metric-label">Updated</span>
+          <span class="dash-metric-value">${formatSeconds(ago)} ago</span>
+        </div>`;
+      }
+
+      html += "</div>";
+      card.innerHTML = html;
+      container.appendChild(card);
+    });
+  } catch (e) {}
+}
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+/* --- Nav click handlers --- */
+document.querySelectorAll("[data-page]").forEach(el => {
+  el.addEventListener("click", (e) => {
+    e.preventDefault();
+    showPage(el.getAttribute("data-page"));
+  });
 });
 
 /* --- Wire up buttons --- */
@@ -303,6 +440,8 @@ checkStatus();
 initConsole();
 loadDevices();
 
-// Poll status and devices every 5 seconds
+// Poll status and devices
 setInterval(checkStatus, 5000);
 setInterval(loadDevices, 10000);
+// Refresh dashboard if viewing it
+setInterval(() => { if (currentPage === "dashboard") updateDashboardCards(); }, 10000);
