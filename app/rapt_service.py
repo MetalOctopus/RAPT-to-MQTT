@@ -22,6 +22,7 @@ class RaptBridge:
         self._stop_event = threading.Event()
         self._thread = None
         self._mqtt_client = None
+        self._first_poll = True
         self._headers = {
             "Accept": "application/json",
         }
@@ -188,6 +189,11 @@ class RaptBridge:
             return None
 
         controller = response[0]
+
+        if self._first_poll:
+            self._logger.info(f"Full API response: {json.dumps(controller, indent=2, default=str)}")
+            self._first_poll = False
+
         device_id = controller["id"]
         current_temp = "%.2f" % controller["temperature"]
         target_temp = "%.2f" % controller["targetTemperature"]
