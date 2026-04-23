@@ -1,0 +1,12 @@
+version: "3"
+services:
+  rapt2mqtt:
+    build: .
+    container_name: rapt2mqtt
+    ports:
+      - "8099:8099"
+    volumes:
+      - ./config:/config
+    environment:
+      - CONFIG_DIR=/config
+    restart: unless-stopped

@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>RAPT2MQTT</Name>
+  <Repository>ghcr.io/metaloctopus/rapt-to-mqtt:latest</Repository>
+  <Registry>https://ghcr.io/metaloctopus/rapt-to-mqtt</Registry>
+  <Branch>
+    <Tag>latest</Tag>
+    <TagDescription>Latest stable release</TagDescription>
+  </Branch>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/MetalOctopus/RAPT-to-MQTT/issues</Support>
+  <Project>https://github.com/MetalOctopus/RAPT-to-MQTT</Project>
+  <Overview>Bridge between RAPT (Kegland) brewing temperature controllers and MQTT for Home Assistant integration. Polls RAPT API for temperature data and publishes to MQTT. Accepts temperature change commands via MQTT.</Overview>
+  <Category>HomeAutomation: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8099]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/MetalOctopus/RAPT-to-MQTT/main/unraid-template.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/MetalOctopus/RAPT-to-MQTT/main/app/static/icon.svg</Icon>
+  <ExtraParams/>
+  <Description>RAPT2MQTT bridges your RAPT (Kegland) brewing temperature controller to MQTT for Home Assistant. Features a web UI for configuration and live log monitoring.</Description>
+  <Config Name="Web UI Port" Target="8099" Default="8099" Mode="tcp" Description="Web UI port" Type="Port" Display="always" Required="true" Mask="false">8099</Config>
+  <Config Name="Config Directory" Target="/config" Default="/mnt/user/appdata/rapt2mqtt" Mode="rw" Description="Configuration and log storage" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/rapt2mqtt</Config>
+  <Config Name="MQTT Host" Target="MQTT_HOST" Default="" Description="MQTT broker IP or hostname" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="MQTT Port" Target="MQTT_PORT" Default="1883" Description="MQTT broker port" Type="Variable" Display="always" Required="false" Mask="false">1883</Config>
+  <Config Name="MQTT Username" Target="MQTT_USERNAME" Default="" Description="MQTT username (if required)" Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="MQTT Password" Target="MQTT_PASSWORD" Default="" Description="MQTT password (if required)" Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="RAPT Email" Target="RAPT_EMAIL" Default="" Description="Your RAPT account email" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="RAPT API Secret" Target="RAPT_SECRET" Default="" Description="Your RAPT API secret (from RAPT portal Account > API Secrets)" Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Poll Interval" Target="POLL_INTERVAL" Default="60" Description="Seconds between RAPT API polls" Type="Variable" Display="always" Required="false" Mask="false">60</Config>
+</Container>

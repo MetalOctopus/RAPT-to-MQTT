@@ -1,0 +1,205 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  padding: 20px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #21262d;
+}
+
+header svg {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+header h1 {
+  font-size: 1.4em;
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.status-dot.running { background: #2ea043; box-shadow: 0 0 6px #2ea04388; }
+.status-dot.stopped { background: #da3633; }
+
+.panel {
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.panel h2 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #e6edf3;
+  margin-bottom: 16px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-group.full-width {
+  grid-column: 1 / -1;
+}
+
+label {
+  font-size: 0.8em;
+  color: #8b949e;
+  font-weight: 500;
+}
+
+input, select {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: #c9d1d9;
+  font-size: 0.9em;
+  font-family: inherit;
+}
+
+input:focus {
+  outline: none;
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 2px #58a6ff33;
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid #30363d;
+  font-size: 0.85em;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-save {
+  background: #238636;
+  border-color: #238636;
+  color: #fff;
+}
+
+.btn-start {
+  background: #238636;
+  border-color: #238636;
+  color: #fff;
+}
+
+.btn-stop {
+  background: #da3633;
+  border-color: #da3633;
+  color: #fff;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.controls span {
+  font-size: 0.85em;
+  color: #8b949e;
+}
+
+#console {
+  background: #010409;
+  border: 1px solid #21262d;
+  border-radius: 6px;
+  padding: 12px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.8em;
+  line-height: 1.5;
+  height: 400px;
+  overflow-y: auto;
+  color: #7ee787;
+}
+
+#console .log-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+#console .log-line.error {
+  color: #f85149;
+}
+
+#console .log-line.warning {
+  color: #d29922;
+}
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 0.85em;
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.3s;
+  z-index: 100;
+}
+
+.toast.success { background: #238636; }
+.toast.error { background: #da3633; }
+.toast.show { opacity: 1; }
+
+.checkbox-group {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-group input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #238636;
+}

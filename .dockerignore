@@ -1,0 +1,9 @@
+.git
+.claude
+RAPT/
+__pycache__
+*.pyc
+config/
+.github/
+*.md
+LICENSE
