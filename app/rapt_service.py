@@ -172,7 +172,7 @@ class RaptBridge:
                 return
 
             name = f"TILT {color}" if color != "Unknown" else "TILT Hydrometer"
-            if beer:
+            if beer and beer.lower() not in ("", "untitled"):
                 name += f" ({beer})"
 
             self._logger.info(
