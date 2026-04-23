@@ -179,6 +179,27 @@ function boolText(val) {
   return "—";
 }
 
+function rssiLabel(rssi) {
+  if (rssi == null || isNaN(rssi)) return "—";
+  const v = parseInt(rssi);
+  let bars, label;
+  if (v >= -50) { bars = "▂▄▆█"; label = "Excellent"; }
+  else if (v >= -60) { bars = "▂▄▆"; label = "Good"; }
+  else if (v >= -70) { bars = "▂▄"; label = "Fair"; }
+  else { bars = "▂"; label = "Weak"; }
+  return bars + "  " + label + " (" + v + " dBm)";
+}
+
+function timeAgo(isoStr) {
+  if (!isoStr) return "—";
+  const secs = Math.round((Date.now() - new Date(isoStr).getTime()) / 1000);
+  if (secs < 0) return "just now";
+  if (secs < 60) return secs + "s ago";
+  if (secs < 3600) return Math.floor(secs / 60) + "m ago";
+  if (secs < 86400) return Math.floor(secs / 3600) + "h " + Math.floor((secs % 3600) / 60) + "m ago";
+  return Math.floor(secs / 86400) + "d ago";
+}
+
 async function loadDevices() {
   try {
     const res = await fetch("/api/devices");
@@ -269,15 +290,20 @@ function renderDevice(dev) {
   document.getElementById("info-use").textContent = dev.customerUse || "—";
   document.getElementById("info-mac").textContent = dev.macAddress || "—";
   document.getElementById("info-firmware").textContent = dev.firmwareVersion || "—";
-  document.getElementById("info-rssi").textContent = dev.rssi != null ? dev.rssi + " dBm" : "—";
+  document.getElementById("info-rssi").textContent = dev.rssi != null ? rssiLabel(dev.rssi) : "—";
   document.getElementById("info-unit").textContent = unit === "F" ? "Fahrenheit" : "Celsius";
   document.getElementById("info-sensor").textContent = dev.useInternalSensor === true ? "Internal" : dev.useInternalSensor === false ? "External" : "—";
   document.getElementById("info-telemetry").textContent = dev.telemetryFrequency != null ? dev.telemetryFrequency + " min" : "—";
 
+  // Hide irrelevant rows for TILT
+  document.getElementById("row-use").style.display = isTilt ? "none" : "";
+  document.getElementById("row-sensor").style.display = isTilt ? "none" : "";
+  document.getElementById("row-telemetry").style.display = isTilt ? "none" : "";
+
   const lastActivity = dev.lastActivityTime || dev._last_seen;
   if (lastActivity) {
     const d = new Date(lastActivity);
-    document.getElementById("info-last-activity").textContent = d.toLocaleString();
+    document.getElementById("info-last-activity").textContent = d.toLocaleString() + " (" + timeAgo(lastActivity) + ")";
   } else {
     document.getElementById("info-last-activity").textContent = "—";
   }
