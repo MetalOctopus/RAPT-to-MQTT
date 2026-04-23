@@ -126,6 +126,19 @@ def bridge_status():
     return jsonify({"running": bridge.is_running})
 
 
+@app.route("/api/devices", methods=["GET"])
+def get_devices():
+    return jsonify(bridge.devices)
+
+
+@app.route("/api/devices/<device_id>", methods=["GET"])
+def get_device(device_id):
+    devices = bridge.devices
+    if device_id in devices:
+        return jsonify(devices[device_id])
+    return jsonify({"error": "Device not found"}), 404
+
+
 @app.route("/api/logs/history", methods=["GET"])
 def log_history():
     return jsonify(web_log_handler.get_history())

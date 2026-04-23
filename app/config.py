@@ -14,7 +14,7 @@ DEFAULTS = {
     "mqtt_password": "",
     "rapt_email": "",
     "rapt_secret": "",
-    "poll_interval": 60,
+    "poll_interval": 300,
     "auto_start": True,
 }
 

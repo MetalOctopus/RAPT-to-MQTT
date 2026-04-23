@@ -8,74 +8,161 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header>
-    <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-      <path d="M6 18V8h1V7H5v1H4v10h1v1h8v-1H6z" opacity="0.3"/>
-      <path d="M5 6h8v1H5V6zM4 7h1v1H4V7zM3 8h1v10H3V8zM4 18h1v1H4v-1zM5 19h8v1H5v-1zM13 18h1v1h-1v-1zM14 8h1v10h-1V8zM13 7h1v1h-1V7z"/>
-      <path d="M15 10h2v2h-2v-2zM15 8h2v2h1V8h-1V7h-2v1z"/>
-      <path d="M17 12h-2v1h2v-1zM6 8h7v1H6V8z" opacity="0.5"/>
-      <circle cx="9" cy="2" r="1"/>
-      <path d="M5.5 4.5a5 5 0 0 1 7 0" stroke="currentColor" stroke-width="1.2" fill="none"/>
-      <path d="M3.5 3a8 8 0 0 1 11 0" stroke="currentColor" stroke-width="1.2" fill="none"/>
-    </svg>
-    <h1>RAPT2MQTT</h1>
-    <span id="status-dot" class="status-dot stopped"></span>
-    <span id="status-text" style="font-size:0.85em;color:#8b949e">Stopped</span>
-  </header>
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
+        <rect x="3" y="11" width="12" height="12" rx="1.5" fill="#e6a817"/>
+        <ellipse cx="5" cy="11.2" rx="2.2" ry="1.6" fill="#fff"/>
+        <ellipse cx="9" cy="10.5" rx="2.8" ry="2" fill="#fff"/>
+        <ellipse cx="13" cy="11.2" rx="2.2" ry="1.6" fill="#fff"/>
+        <path d="M15 14h2a2 2 0 0 1 2 2v1.5a2 2 0 0 1-2 2h-2" fill="none" stroke="#e6a817" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="9" cy="5" r="1" fill="#58a6ff"/>
+        <path d="M6.2 6.8a4 4 0 0 1 5.6 0" fill="none" stroke="#58a6ff" stroke-width="1.2" stroke-linecap="round"/>
+        <path d="M4 5a7 7 0 0 1 10 0" fill="none" stroke="#58a6ff" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      <span class="sidebar-title">RAPT2MQTT</span>
+      <span id="status-dot" class="status-dot stopped"></span>
+    </div>
 
-  <div class="panel">
-    <h2>Configuration</h2>
-    <div class="form-grid">
-      <div class="form-group">
-        <label for="mqtt_host">MQTT Host</label>
-        <input type="text" id="mqtt_host" placeholder="192.168.1.100">
-      </div>
-      <div class="form-group">
-        <label for="mqtt_port">MQTT Port</label>
-        <input type="number" id="mqtt_port" value="1883">
-      </div>
-      <div class="form-group">
-        <label for="mqtt_username">MQTT Username</label>
-        <input type="text" id="mqtt_username" placeholder="(optional)">
-      </div>
-      <div class="form-group">
-        <label for="mqtt_password">MQTT Password</label>
-        <input type="password" id="mqtt_password" placeholder="(optional)">
-      </div>
-      <div class="form-group">
-        <label for="rapt_email">RAPT Email</label>
-        <input type="email" id="rapt_email" placeholder="you@example.com">
-      </div>
-      <div class="form-group">
-        <label for="rapt_secret">RAPT API Secret</label>
-        <input type="password" id="rapt_secret" placeholder="Your API secret">
-      </div>
-      <div class="form-group">
-        <label for="poll_interval">Poll Interval (seconds)</label>
-        <input type="number" id="poll_interval" value="60" min="10" max="3600">
-      </div>
-      <div class="form-group checkbox-group">
-        <input type="checkbox" id="auto_start" checked>
-        <label for="auto_start">Auto-start on container launch</label>
+    <div class="nav-section">
+      <div class="nav-label">Navigation</div>
+      <a class="nav-item active" data-page="config" href="#">Config</a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Devices</div>
+      <div id="device-list" class="device-list">
+        <div class="nav-item dim">No devices discovered</div>
       </div>
     </div>
-    <div class="btn-row">
-      <button id="btn-save" class="btn-save">Save Configuration</button>
-    </div>
-  </div>
+  </nav>
 
-  <div class="panel">
-    <div class="controls">
-      <h2 style="margin-bottom:0">Bridge</h2>
-      <button id="btn-start" class="btn-start">Start</button>
-      <button id="btn-stop" class="btn-stop" disabled>Stop</button>
-    </div>
-  </div>
+  <main class="content">
+    <!-- Config Page -->
+    <div id="page-config" class="page active">
+      <div class="panel">
+        <h2>Configuration</h2>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="mqtt_host">MQTT Host</label>
+            <input type="text" id="mqtt_host" placeholder="192.168.1.100">
+          </div>
+          <div class="form-group">
+            <label for="mqtt_port">MQTT Port</label>
+            <input type="number" id="mqtt_port" value="1883">
+          </div>
+          <div class="form-group">
+            <label for="mqtt_username">MQTT Username</label>
+            <input type="text" id="mqtt_username" placeholder="(optional)">
+          </div>
+          <div class="form-group">
+            <label for="mqtt_password">MQTT Password</label>
+            <input type="password" id="mqtt_password" placeholder="(optional)">
+          </div>
+          <div class="form-group">
+            <label for="rapt_email">RAPT Email</label>
+            <input type="email" id="rapt_email" placeholder="you@example.com">
+          </div>
+          <div class="form-group">
+            <label for="rapt_secret">RAPT API Secret</label>
+            <input type="password" id="rapt_secret" placeholder="Your API secret">
+          </div>
+          <div class="form-group">
+            <label for="poll_interval">Poll Interval (seconds)</label>
+            <input type="number" id="poll_interval" value="300" min="10" max="3600">
+          </div>
+          <div class="form-group checkbox-group">
+            <input type="checkbox" id="auto_start" checked>
+            <label for="auto_start">Auto-start on container launch</label>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button id="btn-save" class="btn-save">Save Configuration</button>
+        </div>
+      </div>
 
-  <div class="panel">
-    <h2>Console</h2>
-    <div id="console"></div>
-  </div>
+      <div class="panel">
+        <div class="controls">
+          <h2 style="margin-bottom:0">Bridge</h2>
+          <button id="btn-start" class="btn-start">Start</button>
+          <button id="btn-stop" class="btn-stop" disabled>Stop</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Console</h2>
+        <div id="console"></div>
+      </div>
+    </div>
+
+    <!-- Device Detail Page (cloned per device) -->
+    <div id="page-device" class="page">
+      <div class="device-header">
+        <h2 id="device-name">—</h2>
+        <span id="device-connection" class="badge">—</span>
+      </div>
+
+      <div class="device-grid">
+        <div class="device-card primary">
+          <div class="card-label">Current Temperature</div>
+          <div class="card-value" id="device-current-temp">—</div>
+        </div>
+        <div class="device-card primary">
+          <div class="card-label">Target Temperature</div>
+          <div class="card-value" id="device-target-temp">—</div>
+        </div>
+        <div class="device-card">
+          <div class="card-label">Cooling</div>
+          <div class="card-value" id="device-cooling">—</div>
+        </div>
+        <div class="device-card">
+          <div class="card-label">Heating</div>
+          <div class="card-value" id="device-heating">—</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Device Info</h2>
+        <table class="info-table">
+          <tr><td>Name</td><td id="info-name">—</td></tr>
+          <tr><td>Device Type</td><td id="info-type">—</td></tr>
+          <tr><td>Use</td><td id="info-use">—</td></tr>
+          <tr><td>MAC Address</td><td id="info-mac">—</td></tr>
+          <tr><td>Firmware</td><td id="info-firmware">—</td></tr>
+          <tr><td>RSSI</td><td id="info-rssi">—</td></tr>
+          <tr><td>Temp Unit</td><td id="info-unit">—</td></tr>
+          <tr><td>Sensor</td><td id="info-sensor">—</td></tr>
+          <tr><td>Telemetry Frequency</td><td id="info-telemetry">—</td></tr>
+          <tr><td>Last Activity</td><td id="info-last-activity">—</td></tr>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Runtime Stats</h2>
+        <table class="info-table">
+          <tr><td>Total Runtime</td><td id="stats-total">—</td></tr>
+          <tr><td>Cooling Runtime</td><td id="stats-cooling-time">—</td></tr>
+          <tr><td>Cooling Starts</td><td id="stats-cooling-starts">—</td></tr>
+          <tr><td>Heating Runtime</td><td id="stats-heating-time">—</td></tr>
+          <tr><td>Heating Starts</td><td id="stats-heating-starts">—</td></tr>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Controller Settings</h2>
+        <table class="info-table">
+          <tr><td>PID Enabled</td><td id="settings-pid">—</td></tr>
+          <tr><td>Cooling Hysteresis</td><td id="settings-cool-hyst">—</td></tr>
+          <tr><td>Heating Hysteresis</td><td id="settings-heat-hyst">—</td></tr>
+          <tr><td>Compressor Delay</td><td id="settings-compressor">—</td></tr>
+          <tr><td>Mode Switch Delay</td><td id="settings-mode-switch">—</td></tr>
+          <tr><td>High Temp Alarm</td><td id="settings-high-alarm">—</td></tr>
+          <tr><td>Low Temp Alarm</td><td id="settings-low-alarm">—</td></tr>
+          <tr><td>Bluetooth</td><td id="settings-bluetooth">—</td></tr>
+        </table>
+      </div>
+    </div>
+  </main>
 
   <div id="toast" class="toast"></div>
 

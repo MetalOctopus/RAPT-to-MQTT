@@ -22,7 +22,8 @@ class RaptBridge:
         self._stop_event = threading.Event()
         self._thread = None
         self._mqtt_client = None
-        self._first_poll = True
+        self._devices = {}  # id -> full device dict
+        self._devices_lock = threading.Lock()
         self._headers = {
             "Accept": "application/json",
         }
@@ -30,6 +31,11 @@ class RaptBridge:
     @property
     def is_running(self):
         return self._thread is not None and self._thread.is_alive()
+
+    @property
+    def devices(self):
+        with self._devices_lock:
+            return dict(self._devices)
 
     def update_config(self, config):
         self._config = config
@@ -77,7 +83,7 @@ class RaptBridge:
             self._mqtt_client.connect(mqtt_host, mqtt_port, keepalive=60)
             self._mqtt_client.loop_start()
 
-            poll_interval = int(self._config.get("poll_interval", 60))
+            poll_interval = int(self._config.get("poll_interval", 300))
 
             while not self._stop_event.is_set():
                 try:
@@ -188,27 +194,35 @@ class RaptBridge:
             self._logger.warning("No temperature controllers found.")
             return None
 
+        # Cache all discovered devices
+        with self._devices_lock:
+            for controller in response:
+                controller["_last_seen"] = datetime.now().isoformat()
+                self._devices[controller["id"]] = controller
+
+        # Process first controller for MQTT (backward compat)
         controller = response[0]
-
-        if self._first_poll:
-            self._logger.info(f"Full API response: {json.dumps(controller, indent=2, default=str)}")
-            self._first_poll = False
-
         device_id = controller["id"]
         current_temp = "%.2f" % controller["temperature"]
         target_temp = "%.2f" % controller["targetTemperature"]
+        name = controller.get("name", "Unknown")
 
         self._logger.info(
             f"{datetime.now().strftime('%B %d - %H:%M')} | "
-            f"Device: {device_id[:8]}... | "
+            f"{name} | "
             f"Current: {current_temp}°C | Target: {target_temp}°C"
         )
 
         # Publish to MQTT using the persistent client connection
         payload = json.dumps({
             "device_id": device_id,
+            "name": name,
             "current_temp": current_temp,
             "target_temp": target_temp,
+            "cooling_enabled": controller.get("coolingEnabled", False),
+            "heating_enabled": controller.get("heatingEnabled", False),
+            "connection_state": controller.get("connectionState", "Unknown"),
+            "rssi": controller.get("rssi", 0),
         })
         self._mqtt_client.publish(self.PUBLISH_TOPIC, payload)
 
