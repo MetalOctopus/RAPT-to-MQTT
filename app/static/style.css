@@ -1153,6 +1153,29 @@ code {
   color: #f0883e;
   border: 1px solid rgba(240, 136, 62, 0.3);
 }
+.badge-type.supported {
+  background: rgba(46, 160, 67, 0.15);
+  color: #3fb950;
+  border: 1px solid rgba(46, 160, 67, 0.3);
+}
+.badge-type.bridge {
+  background: rgba(163, 113, 247, 0.15);
+  color: #a371f7;
+  border: 1px solid rgba(163, 113, 247, 0.3);
+}
+.integration-status-bar {
+  font-size: 0.85em;
+  padding: 6px 12px;
+  border-radius: 6px;
+  text-align: center;
+  font-weight: 600;
+  margin-top: auto;
+}
+.integration-status-bar.supported {
+  background: rgba(46, 160, 67, 0.1);
+  color: #3fb950;
+  border: 1px solid rgba(46, 160, 67, 0.25);
+}
 .integration-affiliate {
   font-size: 0.75em;
   color: #484f58;

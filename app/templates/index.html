@@ -718,6 +718,56 @@
     <!-- Integrations Page -->
     <div id="page-integrations" class="page">
       <div class="panel">
+        <h2>Currently Supported</h2>
+        <p>These devices work right now, out of the box.</p>
+      </div>
+
+      <div class="integration-grid">
+        <div class="panel integration-card">
+          <div class="integration-type-badges">
+            <span class="badge-type controller">Controller</span>
+            <span class="badge-type supported">Supported</span>
+          </div>
+          <h3>RAPT Temperature Controller</h3>
+          <p class="integration-desc">Full cloud API integration. Monitor fridge and target temperature, set target remotely, detect heating/cooling/idle mode, compressor delay, hysteresis settings, PID tuning, signal strength.</p>
+          <p class="integration-affiliate">Get one: <a href="https://www.kegland.com.au" target="_blank">kegland.com.au</a></p>
+          <div class="integration-status-bar supported">Full support</div>
+        </div>
+
+        <div class="panel integration-card">
+          <div class="integration-type-badges">
+            <span class="badge-type sensor">Sensor</span>
+            <span class="badge-type supported">Supported</span>
+          </div>
+          <h3>TILT Hydrometer</h3>
+          <p class="integration-desc">Live specific gravity and beer temperature via TiltPi MQTT. All TILT colours supported. Multiple TILTs, multiple concurrent brews.</p>
+          <p class="integration-affiliate">Get one: <a href="https://tilthydrometer.com" target="_blank">tilthydrometer.com</a></p>
+          <div class="integration-status-bar supported">Full support (via TiltPi)</div>
+        </div>
+
+        <div class="panel integration-card">
+          <div class="integration-type-badges">
+            <span class="badge-type bridge">Bridge</span>
+            <span class="badge-type supported">Supported</span>
+          </div>
+          <h3>Home Assistant / MQTT</h3>
+          <p class="integration-desc">All device metrics published to MQTT. Native Home Assistant sensors via auto-discovery. Brew reminders and alerts as MQTT notifications with MDI icons.</p>
+          <div class="integration-status-bar supported">Full support</div>
+        </div>
+
+        <div class="panel integration-card">
+          <div class="integration-type-badges">
+            <span class="badge-type controller">Controller</span>
+            <span class="badge-type sensor">Sensor</span>
+            <span class="badge-type supported">Supported</span>
+          </div>
+          <h3>Smart Temperature Feedback</h3>
+          <p class="integration-desc">Cascaded control loop that reads the hydrometer temperature (in the liquid) and adjusts the controller's fridge target to hold your actual beer at the desired temperature.</p>
+          <div class="integration-status-bar supported">Built in</div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:24px">
         <h2>Request an Integration</h2>
         <p>I don't own every piece of brewing gear on the market. To write an integration properly, I need to:</p>
         <ol class="help-list">
