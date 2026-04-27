@@ -1,0 +1,13 @@
+{
+  "domain": "beer2mqtt",
+  "name": "BEER2MQTT",
+  "codeowners": ["@MetalOctopus"],
+  "config_flow": true,
+  "dependencies": ["mqtt"],
+  "documentation": "https://github.com/MetalOctopus/RAPT-to-MQTT/tree/main/HomeAssistant",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/MetalOctopus/RAPT-to-MQTT/issues",
+  "mqtt": ["rapt2mqtt/discovery"],
+  "requirements": [],
+  "version": "1.0.0"
+}

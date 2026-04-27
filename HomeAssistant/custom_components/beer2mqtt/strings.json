@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BEER2MQTT",
+        "description": "This integration connects to your RAPT2MQTT bridge via MQTT. Make sure RAPT2MQTT is running and 'Enable Home Assistant Discovery' is turned on in its config.\n\nNo configuration needed — devices will be discovered automatically."
+      }
+    },
+    "abort": {
+      "already_configured": "BEER2MQTT is already configured."
+    }
+  }
+}
