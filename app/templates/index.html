@@ -326,11 +326,32 @@
       <!-- Smart Temp Feedback -->
       <div class="panel">
         <h2>Smart Temperature Feedback</h2>
-        <p id="feedback-description" class="help-text" style="margin:4px 0 10px 0;line-height:1.5"></p>
-        <div class="controls">
+        <p id="feedback-explanation" class="help-text" style="margin:4px 0 12px 0;line-height:1.6"></p>
+        <div class="controls" style="margin-bottom:12px">
           <button id="btn-feedback-start" class="btn-save">Enable</button>
           <button id="btn-feedback-stop" class="btn-stop" disabled>Disable</button>
-          <span id="feedback-status" class="help-text">Disabled</span>
+        </div>
+        <div id="feedback-live-status" style="display:none">
+          <div class="device-grid" style="margin-bottom:12px">
+            <div class="device-card">
+              <div class="card-label">Status</div>
+              <div class="card-value" id="fb-status">--</div>
+            </div>
+            <div class="device-card">
+              <div class="card-label">Last Action</div>
+              <div class="card-value" id="fb-last-action">--</div>
+            </div>
+            <div class="device-card">
+              <div class="card-label">Error</div>
+              <div class="card-value" id="fb-error">--</div>
+            </div>
+            <div class="device-card">
+              <div class="card-label">Next Check</div>
+              <div class="card-value" id="fb-next-check">--</div>
+            </div>
+          </div>
+          <p id="feedback-narrative" style="margin:0 0 12px 0;line-height:1.6;color:#8b949e;font-size:0.9em"></p>
+          <p id="feedback-hardware-note" style="margin:0 0 12px 0;line-height:1.5;color:#484f58;font-size:0.8em"></p>
         </div>
         <div class="chart-container" style="margin-top:12px">
           <canvas id="feedback-chart"></canvas>

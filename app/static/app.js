@@ -921,27 +921,8 @@ function renderBrewDetail(b) {
   // Needle gauge
   updateNeedleGauge(b);
 
-  // Feedback description
-  const sourceLabelsLong = { hydrometer: "Hydrometer", controller: "Controller probe", mean: "Mean of Hydrometer + Controller" };
-  const srcName = sourceLabelsLong[b.temp_source] || "Hydrometer";
-  const srcDevice = b.tilt_name || b.controller_name || "your sensor";
-  const ctrlName = b.controller_name || "the temperature controller";
-  const targetLabel = b.target_beer_temp != null ? b.target_beer_temp + "\u00b0C" : "your target";
-  const descEl = document.getElementById("feedback-description");
-  const viaApi = " Adjustments are made via the RAPT API \u2014 your controller settings in the RAPT Portal stay in sync.";
-  if (b.temp_source === "controller") {
-    descEl.textContent = `Enable this and we will use ${ctrlName}'s probe to automatically adjust ${ctrlName}'s target temperature, such that the probe reading matches your beer target of ${targetLabel}.` + viaApi;
-  } else if (b.temp_source === "mean") {
-    descEl.textContent = `Enable this and we will use the mean of ${b.tilt_name || "the hydrometer"} and ${ctrlName}'s probe to automatically adjust ${ctrlName}'s target temperature, such that the averaged reading matches your beer target of ${targetLabel}.` + viaApi;
-  } else {
-    descEl.textContent = `Enable this and we will use ${b.tilt_name || "the hydrometer"} (${srcName}, in-liquid) to automatically adjust ${ctrlName}'s target temperature, such that the ${b.tilt_name || "hydrometer"} reading matches your beer target of ${targetLabel}.` + viaApi;
-  }
-
-  // Feedback status
-  const fbEnabled = b.temp_feedback_enabled;
-  document.getElementById("btn-feedback-start").disabled = fbEnabled;
-  document.getElementById("btn-feedback-stop").disabled = !fbEnabled;
-  document.getElementById("feedback-status").textContent = fbEnabled ? "Active -- adjusting fridge target" : "Disabled";
+  // Feedback explanation and live status
+  renderFeedbackStatus(b);
 
   // Reminders
   renderReminders(b.reminders || [], b.id);
@@ -1080,6 +1061,147 @@ function updateNeedleGauge(b) {
   }
   const ctrlTarget = b.controller_target != null ? parseFloat(b.controller_target).toFixed(1) : "--";
   document.getElementById("gauge-fridge-label").textContent = `Target ${ctrlTarget}\u00b0C`;
+}
+
+function renderFeedbackStatus(b) {
+  const fbEnabled = b.temp_feedback_enabled;
+  const ctrlName = b.controller_name || "the controller";
+  const tiltName = b.tilt_name || "the hydrometer";
+  const targetBeer = b.target_beer_temp;
+  const targetLabel = targetBeer != null ? targetBeer + "\u00b0C" : "--";
+  const interval = b.temp_feedback_interval || 300;
+  const intervalMin = Math.round(interval / 60);
+  const deadband = b.temp_feedback_deadband || 0.3;
+  const srcLabels = { hydrometer: "Hydrometer (in-liquid)", controller: "Controller probe (fridge air)", mean: "Mean of both sensors" };
+  const tempSource = b.temp_source || "hydrometer";
+
+  // Button state
+  document.getElementById("btn-feedback-start").disabled = fbEnabled;
+  document.getElementById("btn-feedback-stop").disabled = !fbEnabled;
+
+  // Explanation — always visible, describes what this does
+  const explEl = document.getElementById("feedback-explanation");
+  let sensorDesc;
+  if (tempSource === "controller") {
+    sensorDesc = `${ctrlName}'s probe (fridge air)`;
+  } else if (tempSource === "mean") {
+    sensorDesc = `the average of ${tiltName} and ${ctrlName}'s probe`;
+  } else {
+    sensorDesc = `${tiltName} (in the liquid)`;
+  }
+
+  if (!fbEnabled) {
+    explEl.textContent = `When enabled, this will read the actual beer temperature from ${sensorDesc} and automatically adjust ${ctrlName}'s target temperature via the RAPT API so that your beer reaches ${targetLabel}. The fridge air hits target quickly, but the liquid has far more thermal mass \u2014 this closes that gap.`;
+  } else {
+    explEl.textContent = `Active \u2014 reading beer temperature from ${sensorDesc} and adjusting ${ctrlName}'s target via the RAPT API every ${intervalMin} minutes to hold your beer at ${targetLabel}. Your RAPT Portal settings stay in sync.`;
+  }
+
+  // Live status panel — only visible when enabled
+  const livePanel = document.getElementById("feedback-live-status");
+  if (!fbEnabled) {
+    livePanel.style.display = "none";
+    return;
+  }
+  livePanel.style.display = "block";
+
+  // Current state
+  const beerTemp = b.beer_temp;
+  const fridgeTemp = b.fridge_temp;
+  const cooling = b.cooling_active;
+  const heating = b.heating_active;
+  const mode = cooling ? "Cooling" : (heating ? "Heating" : "Idle");
+  const compDelay = b.compressor_delay;
+  const coolHyst = b.cooling_hysteresis;
+  const heatHyst = b.heating_hysteresis;
+
+  // Status card
+  const statusEl = document.getElementById("fb-status");
+  statusEl.textContent = mode === "Cooling" ? "\u2744\ufe0f Cooling" : mode === "Heating" ? "\ud83d\udd25 Heating" : "Idle";
+  statusEl.className = "card-value" + (cooling ? " mode-cool" : heating ? " mode-heat" : "");
+
+  // Error card
+  const errorEl = document.getElementById("fb-error");
+  if (beerTemp != null && targetBeer != null) {
+    const err = (beerTemp - targetBeer).toFixed(1);
+    const sign = err > 0 ? "+" : "";
+    errorEl.textContent = sign + err + "\u00b0C";
+    errorEl.style.color = Math.abs(err) <= deadband ? "#2ea043" : Math.abs(err) <= 1.0 ? "#d29922" : "#f85149";
+  } else {
+    errorEl.textContent = "--";
+    errorEl.style.color = "";
+  }
+
+  // Next check card
+  const nextEl = document.getElementById("fb-next-check");
+  const fb = b.last_feedback;
+  if (fb) {
+    const elapsed = Date.now() / 1000 - fb.timestamp;
+    const remaining = Math.max(0, interval - elapsed);
+    if (remaining > 0) {
+      nextEl.textContent = Math.ceil(remaining / 60) + " min";
+    } else {
+      nextEl.textContent = "Any moment";
+    }
+  } else {
+    nextEl.textContent = intervalMin + " min";
+  }
+
+  // Last action card
+  const actionEl = document.getElementById("fb-last-action");
+  if (fb) {
+    const diff = fb.new_target - fb.old_target;
+    const dir = diff > 0 ? "\u2191" : diff < 0 ? "\u2193" : "\u2192";
+    const ago = Math.round((Date.now() / 1000 - fb.timestamp) / 60);
+    actionEl.textContent = `${dir} ${fb.old_target.toFixed(1)} \u2192 ${fb.new_target.toFixed(1)}\u00b0C (${ago}m ago)`;
+  } else {
+    actionEl.textContent = "No adjustments yet";
+  }
+
+  // Narrative — the human-readable "what's happening right now"
+  const narEl = document.getElementById("feedback-narrative");
+  let narrative = "";
+  if (beerTemp != null && targetBeer != null) {
+    const err = beerTemp - targetBeer;
+    const absErr = Math.abs(err);
+    if (absErr <= deadband) {
+      narrative = `${sensorDesc} reads ${beerTemp}\u00b0C \u2014 within ${deadband}\u00b0C of your ${targetLabel} target. No adjustment needed.`;
+    } else if (err > 0) {
+      narrative = `${sensorDesc} reads ${beerTemp}\u00b0C, which is ${absErr.toFixed(1)}\u00b0C above your ${targetLabel} target. `;
+      if (fb) {
+        narrative += `${ctrlName}'s target was lowered to ${fb.new_target.toFixed(1)}\u00b0C to bring it down.`;
+      }
+      if (cooling) {
+        narrative += ` ${ctrlName} is actively cooling.`;
+      } else if (mode === "Idle") {
+        narrative += ` ${ctrlName} is idle \u2014 waiting for the next cooling cycle.`;
+      }
+    } else {
+      narrative = `${sensorDesc} reads ${beerTemp}\u00b0C, which is ${absErr.toFixed(1)}\u00b0C below your ${targetLabel} target. `;
+      if (fb) {
+        narrative += `${ctrlName}'s target was raised to ${fb.new_target.toFixed(1)}\u00b0C to warm it up.`;
+      }
+      if (heating) {
+        narrative += ` ${ctrlName} is actively heating.`;
+      } else if (mode === "Idle") {
+        narrative += ` ${ctrlName} is idle \u2014 waiting for the next heating cycle.`;
+      }
+    }
+  }
+  narEl.textContent = narrative;
+
+  // Hardware constraints note
+  const hwEl = document.getElementById("feedback-hardware-note");
+  const parts = [];
+  if (compDelay != null) parts.push(`compressor cooldown of ${compDelay} min`);
+  if (coolHyst != null) parts.push(`cooling hysteresis of ${coolHyst}\u00b0C`);
+  if (heatHyst != null) parts.push(`heating hysteresis of ${heatHyst}\u00b0C`);
+  if (parts.length) {
+    hwEl.textContent = `${ctrlName} has a ${parts.join(", ")}. ` +
+      `The feedback loop checks every ${intervalMin} min and only adjusts if the delta exceeds ${deadband}\u00b0C \u2014 ` +
+      `these hardware constraints mean convergence takes multiple cycles. This is as fast as the controller allows.`;
+  } else {
+    hwEl.textContent = `Feedback loop checks every ${intervalMin} min, adjusts only if delta exceeds ${deadband}\u00b0C deadband.`;
+  }
 }
 
 function renderBrewLog(events, startedAt) {

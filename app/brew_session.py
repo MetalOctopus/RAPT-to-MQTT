@@ -156,6 +156,26 @@ class BrewSession:
             session["fridge_temp"] = ctrl.get("temperature")
             session["controller_target"] = ctrl.get("targetTemperature")
             session["controller_name"] = ctrl.get("name", "Controller")
+            session["compressor_delay"] = ctrl.get("compressorDelay")
+            session["cooling_hysteresis"] = ctrl.get("coolingHysteresis")
+            session["heating_hysteresis"] = ctrl.get("heatingHysteresis")
+            session["cooling_active"] = ctrl.get("_cooling_active", False)
+            session["heating_active"] = ctrl.get("_heating_active", False)
+
+        # Last feedback action
+        fb_log = self._history.get_temp_feedback_log(session["id"], limit=1)
+        if fb_log:
+            last = fb_log[-1]
+            session["last_feedback"] = {
+                "timestamp": last["timestamp"],
+                "beer_temp": last["beer_temp"],
+                "fridge_temp": last["fridge_temp"],
+                "target_beer_temp": last["target_beer_temp"],
+                "old_target": last["old_controller_target"],
+                "new_target": last["new_controller_target"],
+                "error": last["error"],
+                "adjustment": last["adjustment"],
+            }
 
         session["events"] = self._history.get_events(session["id"])
         session["reminders"] = self._history.get_reminders(session["id"])
