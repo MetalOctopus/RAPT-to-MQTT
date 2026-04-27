@@ -927,83 +927,92 @@ function updateNeedleGauge(b) {
     pct = totalDrop > 0 ? Math.min(100, Math.max(0, (currentDrop / totalDrop) * 100)) : 0;
   }
 
-  const canvas = document.getElementById("brew-gauge-canvas");
-  if (!canvas) return;
+  const el = document.getElementById("brew-gauge-echarts");
+  if (!el) return;
 
   if (!brewGauge) {
-    brewGauge = new RadialGauge({
-      renderTo: canvas,
-      width: 320,
-      height: 320,
-      units: "%",
-      title: "Fermentation",
-      minValue: 0,
-      maxValue: 100,
-      majorTicks: ["0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100"],
-      minorTicks: 5,
-      startAngle: 90,
-      ticksAngle: 180,
-      valueBox: true,
-      valueBoxStroke: 0,
-      valueTextShadow: false,
-      valueDec: 0,
-      value: 0,
-      // Colors — dark theme
-      colorPlate: "#161b22",
-      colorMajorTicks: "#8b949e",
-      colorMinorTicks: "#484f58",
-      colorNumbers: "#8b949e",
-      colorTitle: "#8b949e",
-      colorUnits: "#8b949e",
-      colorValueText: "#e6edf3",
-      colorValueBoxBackground: "transparent",
-      colorValueBoxRect: "transparent",
-      colorValueBoxRectEnd: "transparent",
-      colorValueBoxShadow: "transparent",
-      colorNeedleShadowUp: "transparent",
-      colorNeedleShadowDown: "rgba(0,0,0,0.4)",
-      colorNeedle: "#e6edf3",
-      colorNeedleEnd: "#c9d1d9",
-      colorNeedleCircleOuter: "#58a6ff",
-      colorNeedleCircleOuterEnd: "#58a6ff",
-      colorNeedleCircleInner: "#30363d",
-      colorNeedleCircleInnerEnd: "#30363d",
-      colorBorderOuter: "#21262d",
-      colorBorderOuterEnd: "#21262d",
-      colorBorderMiddle: "#21262d",
-      colorBorderMiddleEnd: "#21262d",
-      colorBorderInner: "#161b22",
-      colorBorderInnerEnd: "#161b22",
-      // Progress zones: orange → yellow → green
-      highlights: [
-        { from: 0, to: 25, color: "rgba(240,136,62,0.35)" },
-        { from: 25, to: 50, color: "rgba(210,153,34,0.35)" },
-        { from: 50, to: 75, color: "rgba(126,231,135,0.25)" },
-        { from: 75, to: 100, color: "rgba(46,160,67,0.4)" },
-      ],
-      // Needle
-      needleType: "arrow",
-      needleWidth: 3,
-      needleShadow: true,
-      needleCircleSize: 10,
-      // Borders
-      borderOuterWidth: 2,
-      borderMiddleWidth: 2,
-      borderInnerWidth: 2,
-      borderShadowWidth: 0,
-      // Animation
-      animation: true,
-      animationDuration: 800,
-      animationRule: "elastic",
-      // Font
-      fontTitleSize: 22,
-      fontUnitsSize: 18,
-      fontValueSize: 32,
-      fontNumbersSize: 16,
-    }).draw();
+    brewGauge = echarts.init(el, null, { renderer: "canvas" });
   }
 
-  brewGauge.value = Math.round(pct);
+  const val = Math.round(pct);
+
+  brewGauge.setOption({
+    series: [{
+      type: "gauge",
+      startAngle: 180,
+      endAngle: 0,
+      min: 0,
+      max: 100,
+      radius: "100%",
+      center: ["50%", "75%"],
+      // Color bands on the arc (fixed, not attached to needle)
+      axisLine: {
+        lineStyle: {
+          width: 18,
+          color: [
+            [0.25, "#f0883e"],
+            [0.50, "#d29922"],
+            [0.75, "#7ee787"],
+            [1, "#2ea043"],
+          ],
+        },
+      },
+      // Tick marks
+      axisTick: {
+        distance: -22,
+        length: 6,
+        lineStyle: { color: "#8b949e", width: 1 },
+      },
+      splitLine: {
+        distance: -26,
+        length: 12,
+        lineStyle: { color: "#8b949e", width: 2 },
+      },
+      axisLabel: {
+        distance: -14,
+        color: "#8b949e",
+        fontSize: 12,
+        formatter: "{value}",
+      },
+      // Needle
+      pointer: {
+        icon: "path://M12.8,0.7l12,40.1H0.7L12.8,0.7z",
+        length: "70%",
+        width: 8,
+        offsetCenter: [0, "-5%"],
+        itemStyle: {
+          color: "#e6edf3",
+          shadowColor: "rgba(0,0,0,0.5)",
+          shadowBlur: 6,
+          shadowOffsetY: 3,
+        },
+      },
+      anchor: {
+        show: true,
+        size: 14,
+        showAbove: true,
+        itemStyle: {
+          borderWidth: 3,
+          borderColor: "#58a6ff",
+          color: "#30363d",
+        },
+      },
+      // Center value text
+      detail: {
+        valueAnimation: true,
+        fontSize: 28,
+        fontWeight: "bold",
+        color: "#e6edf3",
+        offsetCenter: [0, "20%"],
+        formatter: "{value}%",
+      },
+      title: { show: false },
+      data: [{ value: val }],
+      animationDuration: 800,
+      animationEasingUpdate: "cubicOut",
+    }],
+    backgroundColor: "transparent",
+  });
 }
 
 function renderBrewLog(events, startedAt) {
