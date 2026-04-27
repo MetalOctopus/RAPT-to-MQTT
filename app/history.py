@@ -62,6 +62,18 @@ class HistoryStore:
                     adjustment REAL
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS brew_reminders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    reminder_type TEXT NOT NULL,
+                    trigger_value REAL NOT NULL,
+                    message TEXT NOT NULL,
+                    icon TEXT DEFAULT 'mdi:beer',
+                    fired INTEGER DEFAULT 0,
+                    created_at REAL NOT NULL
+                )
+            """)
 
     def _connect(self):
         conn = sqlite3.connect(DB_PATH, timeout=5)
@@ -81,7 +93,7 @@ class HistoryStore:
                     rows
                 )
 
-    def query(self, device_id, metric, start=None, end=None, limit=1000):
+    def query(self, device_id, metric, start=None, end=None, limit=10000):
         """Query history for a device metric. Returns list of {timestamp, value}."""
         sql = "SELECT timestamp, value FROM device_history WHERE device_id = ? AND metric = ?"
         params = [device_id, metric]
@@ -184,3 +196,35 @@ class HistoryStore:
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in reversed(rows)]
+
+    # --- Reminders ---
+
+    def add_reminder(self, session_id, reminder_type, trigger_value, message, icon="mdi:beer"):
+        ts = time.time()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    """INSERT INTO brew_reminders
+                       (session_id, reminder_type, trigger_value, message, icon, fired, created_at)
+                       VALUES (?, ?, ?, ?, ?, 0, ?)""",
+                    (session_id, reminder_type, trigger_value, message, icon, ts)
+                )
+
+    def get_reminders(self, session_id):
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, session_id, reminder_type, trigger_value, message, icon, fired, created_at "
+                "FROM brew_reminders WHERE session_id = ? ORDER BY created_at",
+                (session_id,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def mark_reminder_fired(self, reminder_id):
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute("UPDATE brew_reminders SET fired = 1 WHERE id = ?", (reminder_id,))
+
+    def delete_reminder(self, reminder_id):
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM brew_reminders WHERE id = ?", (reminder_id,))

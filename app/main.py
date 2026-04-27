@@ -74,7 +74,7 @@ def post_config():
 
     cfg = load_config()
 
-    for key in ["mqtt_host", "mqtt_username", "rapt_email"]:
+    for key in ["mqtt_host", "mqtt_username", "rapt_email", "notification_topic"]:
         if key in data:
             cfg[key] = data[key]
 
@@ -154,7 +154,7 @@ def device_set_temperature(device_id):
     if not data or "target" not in data:
         return jsonify({"error": "Missing 'target' field"}), 400
     try:
-        target = float(data["target"])
+        target = round(float(data["target"]), 1)
     except (ValueError, TypeError):
         return jsonify({"error": "target must be a number"}), 400
 
@@ -168,13 +168,42 @@ def device_set_temperature(device_id):
     return jsonify({"status": "ok", "target": target})
 
 
+@app.route("/api/devices/<device_id>/set_pid_enabled", methods=["POST"])
+def device_set_pid_enabled(device_id):
+    data = request.get_json()
+    if not data or "state" not in data:
+        return jsonify({"error": "Missing 'state' field"}), 400
+    devices = bridge.devices
+    if device_id not in devices:
+        return jsonify({"error": "Device not found"}), 404
+    if devices[device_id].get("deviceType") == "TILT":
+        return jsonify({"error": "Cannot set PID on TILT"}), 400
+    bridge.set_pid_enabled(data["state"], device_id)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/devices/<device_id>/set_pid", methods=["POST"])
+def device_set_pid(device_id):
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+    for field in ["p", "i", "d"]:
+        if field not in data:
+            return jsonify({"error": f"Missing '{field}' field"}), 400
+    devices = bridge.devices
+    if device_id not in devices:
+        return jsonify({"error": "Device not found"}), 404
+    bridge.set_pid_values(device_id, float(data["p"]), float(data["i"]), float(data["d"]))
+    return jsonify({"status": "ok"})
+
+
 # --- History / Charts ---
 
 @app.route("/api/history/<device_id>/<metric>", methods=["GET"])
 def get_history(device_id, metric):
     start = request.args.get("start", type=float)
     end = request.args.get("end", type=float)
-    limit = request.args.get("limit", 1000, type=int)
+    limit = request.args.get("limit", 10000, type=int)
     data = history.query(device_id, metric, start=start, end=end, limit=limit)
     return jsonify(data)
 
@@ -184,7 +213,135 @@ def get_device_metrics(device_id):
     return jsonify(history.get_metrics(device_id))
 
 
-# --- Brew Sessions ---
+# --- Multi-Brew Sessions ---
+
+@app.route("/api/brews", methods=["GET"])
+def get_brews():
+    return jsonify(brew.get_all_active())
+
+
+@app.route("/api/brews/<session_id>", methods=["GET"])
+def get_brew_detail(session_id):
+    status = brew.get_brew_status(session_id)
+    if status:
+        return jsonify(status)
+    return jsonify({"error": "Brew not found"}), 404
+
+
+@app.route("/api/brews/start", methods=["POST"])
+def start_brew_session():
+    data = request.get_json() or {}
+    try:
+        session = brew.start_brew(
+            name=data.get("name", "Untitled Brew"),
+            tilt_device_id=data.get("tilt_device_id"),
+            controller_device_id=data.get("controller_device_id"),
+            target_beer_temp=data.get("target_beer_temp"),
+            og=data.get("og"),
+            notes=data.get("notes", ""),
+        )
+        return jsonify(session)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/brews/<session_id>/update", methods=["POST"])
+def update_brew_session(session_id):
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+    try:
+        session = brew.update_session(session_id, data)
+        return jsonify(session)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/brews/<session_id>/complete", methods=["POST"])
+def complete_brew_session(session_id):
+    data = request.get_json() or {}
+    try:
+        session = brew.complete_brew(session_id, fg=data.get("fg"), notes=data.get("notes", ""))
+        return jsonify(session)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/brews/<session_id>/cancel", methods=["POST"])
+def cancel_brew_session(session_id):
+    try:
+        brew.cancel_brew(session_id)
+        return jsonify({"status": "cancelled"})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/brews/<session_id>/event", methods=["POST"])
+def brew_session_event(session_id):
+    data = request.get_json()
+    if not data or "event_type" not in data:
+        return jsonify({"error": "Missing event_type"}), 400
+    try:
+        brew.add_event(session_id, data["event_type"], data.get("description", ""))
+        return jsonify({"status": "ok"})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/brews/<session_id>/feedback/start", methods=["POST"])
+def start_brew_feedback(session_id):
+    try:
+        brew.start_feedback(session_id)
+        return jsonify({"status": "started"})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/brews/<session_id>/feedback/stop", methods=["POST"])
+def stop_brew_feedback(session_id):
+    try:
+        brew.stop_feedback(session_id)
+        return jsonify({"status": "stopped"})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/brews/<session_id>/feedback/log", methods=["GET"])
+def brew_feedback_log(session_id):
+    data = history.get_temp_feedback_log(session_id=session_id)
+    return jsonify(data)
+
+
+@app.route("/api/brews/<session_id>/reminder", methods=["POST"])
+def add_brew_reminder(session_id):
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+    for f in ["message", "reminder_type", "trigger_value"]:
+        if f not in data:
+            return jsonify({"error": f"Missing required field: {f}"}), 400
+    history.add_reminder(
+        session_id,
+        data["reminder_type"],
+        float(data["trigger_value"]),
+        data["message"],
+        data.get("icon", "mdi:beer"),
+    )
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/brews/<session_id>/reminders", methods=["GET"])
+def get_brew_reminders(session_id):
+    return jsonify(history.get_reminders(session_id))
+
+
+@app.route("/api/brews/<session_id>/reminder/<int:reminder_id>", methods=["DELETE"])
+def delete_brew_reminder(session_id, reminder_id):
+    history.delete_reminder(reminder_id)
+    return jsonify({"status": "ok"})
+
+
+# --- Legacy brew routes (backward compat) ---
 
 @app.route("/api/brew", methods=["GET"])
 def get_brew():
@@ -195,7 +352,7 @@ def get_brew():
 
 
 @app.route("/api/brew/start", methods=["POST"])
-def start_brew():
+def start_brew_legacy():
     data = request.get_json() or {}
     try:
         session = brew.start_brew(
@@ -212,68 +369,86 @@ def start_brew():
 
 
 @app.route("/api/brew/update", methods=["POST"])
-def update_brew():
+def update_brew_legacy():
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid JSON"}), 400
+    session = brew.active
+    if not session:
+        return jsonify({"error": "No active brew session"}), 400
     try:
-        session = brew.update_session(data)
-        return jsonify(session)
+        result = brew.update_session(session["id"], data)
+        return jsonify(result)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
 
 @app.route("/api/brew/complete", methods=["POST"])
-def complete_brew():
+def complete_brew_legacy():
     data = request.get_json() or {}
+    session = brew.active
+    if not session:
+        return jsonify({"error": "No active brew session"}), 400
     try:
-        session = brew.complete_brew(fg=data.get("fg"), notes=data.get("notes", ""))
-        return jsonify(session)
+        result = brew.complete_brew(session["id"], fg=data.get("fg"), notes=data.get("notes", ""))
+        return jsonify(result)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
 
 @app.route("/api/brew/cancel", methods=["POST"])
-def cancel_brew():
+def cancel_brew_legacy():
+    session = brew.active
+    if not session:
+        return jsonify({"error": "No active brew session"}), 400
     try:
-        brew.cancel_brew()
+        brew.cancel_brew(session["id"])
         return jsonify({"status": "cancelled"})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
 
 @app.route("/api/brew/event", methods=["POST"])
-def brew_event():
+def brew_event_legacy():
     data = request.get_json()
     if not data or "event_type" not in data:
         return jsonify({"error": "Missing event_type"}), 400
+    session = brew.active
+    if not session:
+        return jsonify({"error": "No active brew session"}), 400
     try:
-        brew.add_event(data["event_type"], data.get("description", ""))
+        brew.add_event(session["id"], data["event_type"], data.get("description", ""))
         return jsonify({"status": "ok"})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
 
 @app.route("/api/brew/feedback/start", methods=["POST"])
-def start_feedback():
+def start_feedback_legacy():
+    session = brew.active
+    if not session:
+        return jsonify({"error": "No active brew session"}), 400
     try:
-        brew.start_feedback()
+        brew.start_feedback(session["id"])
         return jsonify({"status": "started"})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
 
 @app.route("/api/brew/feedback/stop", methods=["POST"])
-def stop_feedback():
+def stop_feedback_legacy():
+    session = brew.active
+    if not session:
+        return jsonify({"error": "No active brew session"}), 400
     try:
-        brew.stop_feedback()
+        brew.stop_feedback(session["id"])
         return jsonify({"status": "stopped"})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
 
 @app.route("/api/brew/feedback/log", methods=["GET"])
-def feedback_log():
+def feedback_log_legacy():
     session = brew.active
     sid = session["id"] if session else None
     data = history.get_temp_feedback_log(session_id=sid)
@@ -286,8 +461,11 @@ def brew_history():
     result = []
     for sid, data_json in sessions:
         s = json.loads(data_json)
-        result.append({"id": s["id"], "name": s["name"], "status": s["status"],
-                        "started_at": s.get("started_at"), "completed_at": s.get("completed_at")})
+        result.append({
+            "id": s["id"], "name": s["name"], "status": s["status"],
+            "started_at": s.get("started_at"), "completed_at": s.get("completed_at"),
+            "og": s.get("og"), "fg": s.get("fg"),
+        })
     return jsonify(result)
 
 

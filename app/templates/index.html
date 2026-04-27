@@ -30,7 +30,8 @@
       <div class="nav-label">Navigation</div>
       <a class="nav-item active" data-page="config" href="#">Config</a>
       <a class="nav-item" data-page="dashboard" href="#">Dashboard</a>
-      <a class="nav-item" data-page="brew" href="#">Brew</a>
+      <a class="nav-item" data-page="brews" href="#">Brews</a>
+      <a class="nav-item nav-newbrew" data-page="newbrew" href="#">+Brew</a>
       <a class="nav-item" data-page="help" href="#">Help</a>
     </div>
 
@@ -75,6 +76,10 @@
           <div class="form-group">
             <label for="poll_interval">Poll Interval (seconds)</label>
             <input type="number" id="poll_interval" value="300" min="10" max="3600">
+          </div>
+          <div class="form-group">
+            <label for="notification_topic">Notification MQTT Topic</label>
+            <input type="text" id="notification_topic" placeholder="RAPT2MQTT/notify">
           </div>
           <div class="form-group checkbox-group">
             <input type="checkbox" id="auto_start" checked>
@@ -148,129 +153,213 @@
       </div>
     </div>
 
-    <!-- Brew Page -->
-    <div id="page-brew" class="page">
-      <!-- No active brew -->
-      <div id="brew-start-panel">
-        <div class="panel">
-          <h2>Start a Brew</h2>
-          <div class="form-grid">
-            <div class="form-group">
-              <label for="brew-name">Beer Name</label>
-              <input type="text" id="brew-name" placeholder="My IPA">
-            </div>
-            <div class="form-group">
-              <label for="brew-og">Original Gravity (OG)</label>
-              <input type="number" id="brew-og" placeholder="1050" step="1">
-            </div>
-            <div class="form-group">
-              <label for="brew-target-temp">Target Beer Temp (&deg;C)</label>
-              <input type="number" id="brew-target-temp" placeholder="18.0" step="0.5">
-            </div>
-            <div class="form-group">
-              <label for="brew-tilt">TILT Device</label>
-              <select id="brew-tilt"><option value="">None</option></select>
-            </div>
-            <div class="form-group">
-              <label for="brew-controller">Temperature Controller</label>
-              <select id="brew-controller"><option value="">None</option></select>
-            </div>
-            <div class="form-group full-width">
-              <label for="brew-notes">Notes</label>
-              <input type="text" id="brew-notes" placeholder="Recipe notes...">
-            </div>
+    <!-- Brews Page (tiles for active brews + history) -->
+    <div id="page-brews" class="page">
+      <div class="panel">
+        <div class="controls">
+          <h2 style="margin-bottom:0">Active Brews</h2>
+          <button class="btn-save" onclick="showPage('newbrew')" style="font-size:0.8em">+ New Brew</button>
+        </div>
+      </div>
+      <div id="brew-tiles" class="brew-tile-grid"></div>
+      <div id="brew-tiles-empty" class="panel" style="display:none">
+        <p class="help-text">No active brews. <a href="#" onclick="showPage('newbrew');return false">Start one</a>.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Brew History</h2>
+        <div id="brew-history-list" class="help-text">No previous brews.</div>
+      </div>
+    </div>
+
+    <!-- +Brew Page (start new brew form) -->
+    <div id="page-newbrew" class="page">
+      <div class="panel">
+        <h2>Start a New Brew</h2>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="brew-name">Beer Name</label>
+            <input type="text" id="brew-name" placeholder="My IPA">
           </div>
-          <div class="btn-row">
-            <button id="btn-start-brew" class="btn-save">Start Brew</button>
+          <div class="form-group">
+            <label for="brew-og">Original Gravity (OG)</label>
+            <input type="number" id="brew-og" placeholder="1050" step="1">
+          </div>
+          <div class="form-group">
+            <label for="brew-target-temp">Target Beer Temp (&deg;C)</label>
+            <input type="number" id="brew-target-temp" placeholder="18.0" step="0.5">
+          </div>
+          <div class="form-group">
+            <label for="brew-tilt">Hydrometer</label>
+            <select id="brew-tilt"><option value="">None</option></select>
+          </div>
+          <div class="form-group">
+            <label for="brew-controller">Temperature Controller</label>
+            <select id="brew-controller"><option value="">None</option></select>
+          </div>
+          <div class="form-group full-width">
+            <label for="brew-notes">Notes</label>
+            <input type="text" id="brew-notes" placeholder="Recipe notes...">
           </div>
         </div>
+        <div class="btn-row">
+          <button id="btn-start-brew" class="btn-save">Start Brew</button>
+        </div>
+      </div>
+    </div>
 
-        <div class="panel">
-          <h2>Brew History</h2>
-          <div id="brew-history-list" class="help-text">No previous brews.</div>
+    <!-- Brew Detail Page (single brew view) -->
+    <div id="page-brew-detail" class="page">
+      <div class="panel">
+        <div class="device-header">
+          <h2 id="brew-detail-name">--</h2>
+          <span class="badge online">Active</span>
+          <span id="brew-detail-duration" class="help-text" style="margin-left:auto"></span>
         </div>
       </div>
 
-      <!-- Active brew -->
-      <div id="brew-active-panel" style="display:none">
-        <div class="panel">
-          <div class="device-header">
-            <h2 id="brew-active-name">—</h2>
-            <span id="brew-active-status" class="badge online">Active</span>
-          </div>
+      <div class="device-grid">
+        <div class="device-card primary">
+          <div class="card-label">Beer Temp</div>
+          <div class="card-value" id="brew-beer-temp">--</div>
         </div>
-
-        <div class="device-grid">
-          <div class="device-card primary">
-            <div class="card-label">Beer Temp</div>
-            <div class="card-value" id="brew-beer-temp">—</div>
-          </div>
-          <div class="device-card primary">
-            <div class="card-label">Fridge Temp</div>
-            <div class="card-value" id="brew-fridge-temp">—</div>
-          </div>
-          <div class="device-card primary">
-            <div class="card-label">Specific Gravity</div>
-            <div class="card-value" id="brew-sg">—</div>
-          </div>
-          <div class="device-card">
-            <div class="card-label">ABV</div>
-            <div class="card-value" id="brew-abv">—</div>
-          </div>
-          <div class="device-card">
-            <div class="card-label">OG</div>
-            <div class="card-value" id="brew-og-display">—</div>
-          </div>
-          <div class="device-card">
-            <div class="card-label">Max ABV</div>
-            <div class="card-value" id="brew-max-abv">—</div>
-          </div>
+        <div class="device-card primary">
+          <div class="card-label">Fridge Temp</div>
+          <div class="card-value" id="brew-fridge-temp">--</div>
         </div>
-
-        <!-- ABV Gauge -->
-        <div class="panel">
-          <h2>Fermentation Progress</h2>
-          <div class="gauge-container">
-            <div class="gauge-bar">
-              <div class="gauge-fill" id="brew-gauge-fill"></div>
-            </div>
-            <div class="gauge-labels">
-              <span>OG</span>
-              <span id="brew-gauge-pct">0%</span>
-              <span>FG (est)</span>
-            </div>
-          </div>
+        <div class="device-card primary">
+          <div class="card-label">Specific Gravity</div>
+          <div class="card-value" id="brew-sg">--</div>
         </div>
-
-        <!-- Smart Temp Feedback -->
-        <div class="panel">
-          <h2>Smart Temperature Feedback <span class="info-tip" title="Automatically adjusts fridge target temperature to keep beer at your desired temp. Uses TILT beer temp to calculate offset.">&#9432;</span></h2>
-          <div class="controls">
-            <button id="btn-feedback-start" class="btn-save">Enable</button>
-            <button id="btn-feedback-stop" class="btn-stop" disabled>Disable</button>
-            <span id="feedback-status" class="help-text">Disabled</span>
-          </div>
-          <div class="chart-container" style="margin-top:12px">
-            <canvas id="feedback-chart"></canvas>
-          </div>
+        <div class="device-card">
+          <div class="card-label">ABV</div>
+          <div class="card-value" id="brew-abv">--</div>
         </div>
-
-        <!-- Brew Events -->
-        <div class="panel">
-          <h2>Brew Log</h2>
-          <div class="btn-row" style="margin-bottom:12px">
-            <button class="btn-save brew-event-btn" data-event="dry_hop">Dry Hopped</button>
-            <button class="btn-save brew-event-btn" data-event="sample">Took Sample</button>
-            <button class="btn-save brew-event-btn" data-event="note">Add Note</button>
-          </div>
-          <div id="brew-events-list"></div>
+        <div class="device-card" id="brew-og-card">
+          <div class="card-label">OG <button class="inline-edit-btn" onclick="editBrewOG()">edit</button></div>
+          <div class="card-value" id="brew-og-display">--</div>
+          <div id="brew-og-hint" class="card-hint" style="display:none"></div>
         </div>
+        <div class="device-card">
+          <div class="card-label">Target Temp <button class="inline-edit-btn" onclick="editBrewTargetTemp()">edit</button></div>
+          <div class="card-value" id="brew-target-display">--</div>
+        </div>
+      </div>
 
-        <div class="panel">
-          <div class="btn-row">
-            <button id="btn-complete-brew" class="btn-save">Complete Brew</button>
-            <button id="btn-cancel-brew" class="btn-stop">Cancel Brew</button>
+      <!-- Needle Gauge -->
+      <div class="panel">
+        <h2>Fermentation Progress</h2>
+        <div class="gauge-needle-container">
+          <svg id="brew-gauge-svg" viewBox="0 0 260 150" class="needle-gauge">
+            <defs>
+              <linearGradient id="gauge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#238636"/>
+                <stop offset="50%" stop-color="#f0883e"/>
+                <stop offset="100%" stop-color="#da3633"/>
+              </linearGradient>
+            </defs>
+            <!-- Background arc -->
+            <path d="M 30 130 A 100 100 0 0 1 230 130" stroke="#21262d" stroke-width="16" fill="none" stroke-linecap="round"/>
+            <!-- Progress arc (drawn dynamically) -->
+            <path id="gauge-arc" d="" stroke="url(#gauge-grad)" stroke-width="16" fill="none" stroke-linecap="round"/>
+            <!-- Tick marks -->
+            <line x1="30" y1="130" x2="38" y2="126" stroke="#484f58" stroke-width="1"/>
+            <line x1="80" y1="43" x2="85" y2="50" stroke="#484f58" stroke-width="1"/>
+            <line x1="130" y1="30" x2="130" y2="38" stroke="#484f58" stroke-width="1"/>
+            <line x1="180" y1="43" x2="175" y2="50" stroke="#484f58" stroke-width="1"/>
+            <line x1="230" y1="130" x2="222" y2="126" stroke="#484f58" stroke-width="1"/>
+            <!-- Needle -->
+            <line id="gauge-needle" x1="130" y1="130" x2="130" y2="40" stroke="#e6edf3" stroke-width="2.5" stroke-linecap="round"/>
+            <!-- Center hub -->
+            <circle cx="130" cy="130" r="6" fill="#30363d" stroke="#58a6ff" stroke-width="2"/>
+            <!-- Percentage -->
+            <text id="gauge-pct-text" x="130" y="115" text-anchor="middle" fill="#e6edf3" font-size="28" font-weight="bold">0%</text>
+            <!-- Labels -->
+            <text x="20" y="148" text-anchor="start" fill="#8b949e" font-size="11">OG</text>
+            <text x="240" y="148" text-anchor="end" fill="#8b949e" font-size="11">FG</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Brew Chart (persistent) -->
+      <div class="panel">
+        <h2>Fermentation Chart</h2>
+        <div class="chart-controls">
+          <div class="form-group">
+            <label for="brew-chart-metric">Metric</label>
+            <select id="brew-chart-metric">
+              <option value="temperature">Temperature</option>
+              <option value="specificGravity">Specific Gravity</option>
+            </select>
           </div>
+          <div class="form-group">
+            <label for="brew-chart-range">Range</label>
+            <select id="brew-chart-range">
+              <option value="86400">24 hours</option>
+              <option value="259200">3 days</option>
+              <option value="604800" selected>7 days</option>
+            </select>
+          </div>
+          <button id="btn-brew-add-series" class="btn-save" style="align-self:flex-end">Add Series</button>
+          <button id="btn-brew-clear-chart" class="btn-stop" style="align-self:flex-end">Clear</button>
+        </div>
+        <div class="chart-container">
+          <canvas id="brew-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Smart Temp Feedback -->
+      <div class="panel">
+        <h2>Smart Temperature Feedback <span class="info-tip" title="Automatically adjusts fridge target temperature to keep beer at your desired temp. Uses hydrometer beer temp to calculate offset.">&#9432;</span></h2>
+        <div class="controls">
+          <button id="btn-feedback-start" class="btn-save">Enable</button>
+          <button id="btn-feedback-stop" class="btn-stop" disabled>Disable</button>
+          <span id="feedback-status" class="help-text">Disabled</span>
+        </div>
+        <div class="chart-container" style="margin-top:12px">
+          <canvas id="feedback-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Reminders -->
+      <div class="panel">
+        <h2>Reminders &amp; Notifications</h2>
+        <div class="reminder-form">
+          <select id="reminder-type">
+            <option value="day">On day...</option>
+            <option value="sg_stable">When SG stable for...</option>
+          </select>
+          <input type="number" id="reminder-value" placeholder="3" min="1" step="1" style="width:60px">
+          <span id="reminder-unit-label">days</span>
+          <input type="text" id="reminder-message" placeholder="Dry hop time!" style="flex:1">
+          <select id="reminder-icon" style="width:120px">
+            <option value="mdi:beer">Beer</option>
+            <option value="mdi:hops">Hops</option>
+            <option value="mdi:thermometer">Thermometer</option>
+            <option value="mdi:flask">Flask</option>
+            <option value="mdi:bell-ring">Bell</option>
+            <option value="mdi:alert">Alert</option>
+          </select>
+          <button id="btn-add-reminder" class="btn-save" style="white-space:nowrap">Add</button>
+        </div>
+        <div id="reminder-list"></div>
+      </div>
+
+      <!-- Brew Log (text-based) -->
+      <div class="panel">
+        <h2>Brew Log</h2>
+        <div class="btn-row" style="margin-bottom:12px">
+          <button class="btn-save brew-event-btn" data-event="dry_hop">Dry Hopped</button>
+          <button class="btn-save brew-event-btn" data-event="sample">Took Sample</button>
+          <button class="btn-save brew-event-btn" data-event="note">Add Note</button>
+        </div>
+        <div id="brew-events-list" class="brew-log-text"></div>
+      </div>
+
+      <div class="panel">
+        <div class="btn-row">
+          <button id="btn-complete-brew" class="btn-save">Complete Brew</button>
+          <button id="btn-cancel-brew" class="btn-stop">Cancel Brew</button>
         </div>
       </div>
     </div>
@@ -278,11 +367,10 @@
     <!-- Device Detail Page -->
     <div id="page-device" class="page">
       <div class="device-header">
-        <h2 id="device-name">—</h2>
-        <span id="device-connection" class="badge">—</span>
+        <h2 id="device-name">--</h2>
+        <span id="device-connection" class="badge">--</span>
       </div>
 
-      <!-- Device sub-tabs -->
       <div class="sub-tabs">
         <button class="sub-tab active" data-subtab="overview">Overview</button>
         <button class="sub-tab" data-subtab="charts">Charts</button>
@@ -294,64 +382,80 @@
         <div class="device-grid">
           <div class="device-card primary">
             <div class="card-label">Current Temperature</div>
-            <div class="card-value" id="device-current-temp">—</div>
+            <div class="card-value" id="device-current-temp">--</div>
           </div>
           <div class="device-card primary" id="card-target-temp">
             <div class="card-label">Target Temperature</div>
-            <div class="card-value" id="device-target-temp">—</div>
+            <div class="card-value" id="device-target-temp">--</div>
           </div>
           <div class="device-card primary" id="card-gravity" style="display:none">
             <div class="card-label">Specific Gravity</div>
-            <div class="card-value" id="device-gravity">—</div>
+            <div class="card-value" id="device-gravity">--</div>
           </div>
           <div class="device-card" id="card-cooling">
-            <div class="card-label">Cooling <span class="info-tip" title="Whether the cooling relay mode is enabled on the controller. The controller decides when to activate based on temperature.">&#9432;</span></div>
-            <div class="card-value" id="device-cooling">—</div>
+            <div class="card-label">Cooling</div>
+            <div class="card-value" id="device-cooling">--</div>
           </div>
           <div class="device-card" id="card-heating">
-            <div class="card-label">Heating <span class="info-tip" title="Whether the heating relay mode is enabled on the controller. Both heating and cooling can be enabled — the controller switches between them as needed.">&#9432;</span></div>
-            <div class="card-value" id="device-heating">—</div>
+            <div class="card-label">Heating</div>
+            <div class="card-value" id="device-heating">--</div>
+          </div>
+        </div>
+
+        <!-- TILT default charts (auto-loaded) -->
+        <div id="tilt-default-charts" style="display:none">
+          <div class="panel">
+            <h2>Temperature (24h)</h2>
+            <div class="chart-container">
+              <canvas id="tilt-temp-chart"></canvas>
+            </div>
+          </div>
+          <div class="panel">
+            <h2>Specific Gravity (24h)</h2>
+            <div class="chart-container">
+              <canvas id="tilt-sg-chart"></canvas>
+            </div>
           </div>
         </div>
 
         <div class="panel">
           <h2>Device Info</h2>
           <table class="info-table">
-            <tr><td>Name</td><td id="info-name">—</td></tr>
-            <tr><td>Device Type <span class="info-tip" title="RAPT device type as reported by the API.">&#9432;</span></td><td id="info-type">—</td></tr>
-            <tr id="row-use"><td>Use <span class="info-tip" title="User-assigned purpose in the RAPT portal.">&#9432;</span></td><td id="info-use">—</td></tr>
-            <tr><td>MAC Address <span class="info-tip" title="Hardware Bluetooth/WiFi MAC address.">&#9432;</span></td><td id="info-mac">—</td></tr>
-            <tr><td>Firmware <span class="info-tip" title="Device firmware version. Check RAPT portal for updates.">&#9432;</span></td><td id="info-firmware">—</td></tr>
-            <tr><td>Signal <span class="info-tip" title="RSSI (Received Signal Strength). For RAPT: WiFi signal. For TILT: Bluetooth signal measured by TiltPi.">&#9432;</span></td><td id="info-rssi">—</td></tr>
-            <tr><td>Temp Unit <span class="info-tip" title="Temperature unit configured on the device.">&#9432;</span></td><td id="info-unit">—</td></tr>
-            <tr id="row-sensor"><td>Sensor <span class="info-tip" title="Whether the controller uses its built-in NTC probe or an external Bluetooth sensor.">&#9432;</span></td><td id="info-sensor">—</td></tr>
-            <tr id="row-telemetry"><td>Telemetry Frequency <span class="info-tip" title="How often the device reports to the RAPT cloud. Configured on the device itself.">&#9432;</span></td><td id="info-telemetry">—</td></tr>
-            <tr><td>Last Activity <span class="info-tip" title="Last time data was received from this device.">&#9432;</span></td><td id="info-last-activity">—</td></tr>
+            <tr><td>Name</td><td id="info-name">--</td></tr>
+            <tr><td>Device Type</td><td id="info-type">--</td></tr>
+            <tr id="row-use"><td>Use</td><td id="info-use">--</td></tr>
+            <tr><td>MAC Address</td><td id="info-mac">--</td></tr>
+            <tr><td>Firmware</td><td id="info-firmware">--</td></tr>
+            <tr><td>Signal</td><td id="info-rssi">--</td></tr>
+            <tr><td>Temp Unit</td><td id="info-unit">--</td></tr>
+            <tr id="row-sensor"><td>Sensor</td><td id="info-sensor">--</td></tr>
+            <tr id="row-telemetry"><td>Telemetry Frequency</td><td id="info-telemetry">--</td></tr>
+            <tr><td>Last Activity</td><td id="info-last-activity">--</td></tr>
           </table>
         </div>
 
         <div class="panel rapt-only">
           <h2>Runtime Stats</h2>
           <table class="info-table">
-            <tr><td>Total Runtime <span class="info-tip" title="Total time the controller has been powered on.">&#9432;</span></td><td id="stats-total">—</td></tr>
-            <tr><td>Cooling Runtime <span class="info-tip" title="Total time the cooling relay has been active.">&#9432;</span></td><td id="stats-cooling-time">—</td></tr>
-            <tr><td>Cooling Starts <span class="info-tip" title="Number of times the cooling relay has been activated.">&#9432;</span></td><td id="stats-cooling-starts">—</td></tr>
-            <tr><td>Heating Runtime <span class="info-tip" title="Total time the heating relay has been active.">&#9432;</span></td><td id="stats-heating-time">—</td></tr>
-            <tr><td>Heating Starts <span class="info-tip" title="Number of times the heating relay has been activated.">&#9432;</span></td><td id="stats-heating-starts">—</td></tr>
+            <tr><td>Total Runtime</td><td id="stats-total">--</td></tr>
+            <tr><td>Cooling Runtime</td><td id="stats-cooling-time">--</td></tr>
+            <tr><td>Cooling Starts</td><td id="stats-cooling-starts">--</td></tr>
+            <tr><td>Heating Runtime</td><td id="stats-heating-time">--</td></tr>
+            <tr><td>Heating Starts</td><td id="stats-heating-starts">--</td></tr>
           </table>
         </div>
 
         <div class="panel rapt-only">
           <h2>Controller Settings</h2>
           <table class="info-table">
-            <tr><td>PID Enabled <span class="info-tip" title="Whether PID control is active vs simple hysteresis on/off control.">&#9432;</span></td><td id="settings-pid">—</td></tr>
-            <tr><td>Cooling Hysteresis <span class="info-tip" title="Temperature must exceed target by this amount before cooling activates. Range: 0.5-10°.">&#9432;</span></td><td id="settings-cool-hyst">—</td></tr>
-            <tr><td>Heating Hysteresis <span class="info-tip" title="Temperature must drop below target by this amount before heating activates. Range: 0.1-10°.">&#9432;</span></td><td id="settings-heat-hyst">—</td></tr>
-            <tr><td>Compressor Delay <span class="info-tip" title="Minimum time between compressor starts to protect the cooling system. Range: 2-10 min.">&#9432;</span></td><td id="settings-compressor">—</td></tr>
-            <tr><td>Mode Switch Delay <span class="info-tip" title="Minimum time between switching from heating to cooling or vice versa. Range: 2-30 min.">&#9432;</span></td><td id="settings-mode-switch">—</td></tr>
-            <tr><td>High Temp Alarm <span class="info-tip" title="Alert threshold when temperature exceeds this value.">&#9432;</span></td><td id="settings-high-alarm">—</td></tr>
-            <tr><td>Low Temp Alarm <span class="info-tip" title="Alert threshold when temperature drops below this value.">&#9432;</span></td><td id="settings-low-alarm">—</td></tr>
-            <tr><td>Bluetooth <span class="info-tip" title="Whether the device's Bluetooth radio is enabled for BLE sensor pairing.">&#9432;</span></td><td id="settings-bluetooth">—</td></tr>
+            <tr><td>PID Enabled</td><td id="settings-pid">--</td></tr>
+            <tr><td>Cooling Hysteresis</td><td id="settings-cool-hyst">--</td></tr>
+            <tr><td>Heating Hysteresis</td><td id="settings-heat-hyst">--</td></tr>
+            <tr><td>Compressor Delay</td><td id="settings-compressor">--</td></tr>
+            <tr><td>Mode Switch Delay</td><td id="settings-mode-switch">--</td></tr>
+            <tr><td>High Temp Alarm</td><td id="settings-high-alarm">--</td></tr>
+            <tr><td>Low Temp Alarm</td><td id="settings-low-alarm">--</td></tr>
+            <tr><td>Bluetooth</td><td id="settings-bluetooth">--</td></tr>
           </table>
         </div>
       </div>
@@ -399,16 +503,43 @@
       <!-- Control sub-tab -->
       <div id="subtab-control" class="subtab-content">
         <div class="panel">
-          <h2>Set Target Temperature</h2>
-          <p class="help-text">Change the target temperature on the RAPT controller. This writes directly to the device via the RAPT API.</p>
+          <h2>Target Temperature</h2>
+          <p class="help-text">Change the target temperature on the RAPT controller via cloud API.</p>
           <div class="form-grid">
             <div class="form-group">
               <label for="ctrl-target-temp">Target Temperature (&deg;C)</label>
-              <input type="number" id="ctrl-target-temp" step="0.5" min="0" max="40">
+              <input type="number" id="ctrl-target-temp" step="0.1" min="0" max="40">
             </div>
           </div>
           <div class="btn-row">
             <button id="btn-set-temp" class="btn-save">Set Temperature</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>PID Control</h2>
+          <p class="help-text">Toggle PID mode and tune parameters. Changes are sent to the RAPT API.</p>
+          <div class="controls" style="margin-bottom:12px">
+            <span class="help-text">PID is currently: <strong id="ctrl-pid-status">--</strong></span>
+            <button id="btn-pid-enable" class="btn-save">Enable PID</button>
+            <button id="btn-pid-disable" class="btn-stop">Disable PID</button>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="ctrl-pid-p">Proportional (P)</label>
+              <input type="number" id="ctrl-pid-p" step="0.1" min="0">
+            </div>
+            <div class="form-group">
+              <label for="ctrl-pid-i">Integral (I)</label>
+              <input type="number" id="ctrl-pid-i" step="0.001" min="0">
+            </div>
+            <div class="form-group">
+              <label for="ctrl-pid-d">Derivative (D)</label>
+              <input type="number" id="ctrl-pid-d" step="0.1" min="0">
+            </div>
+          </div>
+          <div class="btn-row">
+            <button id="btn-set-pid" class="btn-save">Set PID Values</button>
           </div>
         </div>
       </div>
@@ -419,15 +550,14 @@
       <div class="panel">
         <h2>RAPT2MQTT</h2>
         <p>Bridge between <strong>RAPT</strong> (Kegland) brewing devices and <strong>MQTT</strong> for Home Assistant and other home automation platforms.</p>
-        <p>The bridge polls the RAPT cloud API for temperature controller data and publishes it to your MQTT broker. It also listens for TILT hydrometer data on MQTT.</p>
       </div>
 
       <div class="panel">
         <h2>Getting Started</h2>
         <ol class="help-list">
           <li>Go to <strong>Config</strong> and enter your MQTT broker address and port.</li>
-          <li>Enter your <strong>RAPT email</strong> and <strong>API Secret</strong>. Create one in the <a href="https://app.rapt.io" target="_blank">RAPT Portal</a> under My Account &gt; API Secrets.</li>
-          <li>Set the <strong>Poll Interval</strong> (default 300s). Polling faster than 60s is not recommended.</li>
+          <li>Enter your <strong>RAPT email</strong> and <strong>API Secret</strong>.</li>
+          <li>Set the <strong>Poll Interval</strong> (default 300s).</li>
           <li>Click <strong>Save Configuration</strong>, then <strong>Start</strong> the bridge.</li>
           <li>Devices appear in the sidebar as they are discovered.</li>
         </ol>
@@ -439,6 +569,7 @@
           <tr><td>RAPT Data</td><td><code>RAPT/temperatureController</code></td></tr>
           <tr><td>RAPT Commands</td><td><code>RAPT/temperatureController/Command</code></td></tr>
           <tr><td>TILT Data (inbound)</td><td><code>TiltPi</code></td></tr>
+          <tr><td>Notifications (outbound)</td><td><code>RAPT2MQTT/notify</code> (configurable)</td></tr>
         </table>
       </div>
 
@@ -449,36 +580,15 @@
         <ol class="help-list">
           <li>Open TiltPi Node-RED at <code>http://tiltpi.local:1880</code></li>
           <li>Find the <strong>ui_template</strong> node for your TILT color</li>
-          <li>Add a <strong>function</strong> node with:
-            <pre class="code-block">msg.topic = "TiltPi";
-var p = msg.payload;
-msg.payload = JSON.stringify({
-  color: (p.Color || "Unknown"),
-  beer: (p.Beer && p.Beer[0]) || "",
-  temperature: parseFloat(p.displayTemp || 0),
-  temperature_raw: parseFloat(p.Temp || 0),
-  sg: parseFloat(p.SG || 0),
-  rssi: Math.round((parseInt(p.rssi || 0)) / 5) * 5,
-  mac: p.mac || "",
-  uuid: p.uuid || ""
-});
-return msg;</pre>
-          </li>
-          <li>Add <strong>rbe</strong> node, then <strong>mqtt out</strong> node pointed at your MQTT broker, topic <code>TiltPi</code></li>
-          <li>Wire: <code>ui_template &rarr; function &rarr; rbe &rarr; mqtt out</code> and Deploy</li>
+          <li>Add a <strong>function</strong> node, then <strong>rbe</strong>, then <strong>mqtt out</strong> to topic <code>TiltPi</code></li>
         </ol>
-        <h3>Alternative: TiltBridge (ESP32, ~$10)</h3>
+        <h3>Alternative: TiltBridge (ESP32)</h3>
         <p>Flash <a href="https://github.com/thorrak/tiltbridge" target="_blank">TiltBridge firmware</a> onto an ESP32 for native MQTT output.</p>
       </div>
 
       <div class="panel">
-        <h2>Supported RAPT Devices</h2>
-        <table class="info-table">
-          <tr><td>Temperature Controller</td><td>Heating/cooling relay, PID, target temp</td></tr>
-          <tr><td>RAPT Pill</td><td>Floating hydrometer (gravity, temp, battery) - planned</td></tr>
-          <tr><td>Fermentation Chamber</td><td>Integrated cooling/heating unit - planned</td></tr>
-          <tr><td>BrewZilla Gen 4</td><td>All-in-one brewing system - planned</td></tr>
-        </table>
+        <h2>Brew Reminders &amp; Notifications</h2>
+        <p>Set reminders on active brews (e.g. "Dry hop on day 5"). When triggered, a notification is published to your configured MQTT topic. Set up a Home Assistant automation to pick up <code>RAPT2MQTT/notify</code> messages and send push notifications.</p>
       </div>
 
       <div class="panel">
@@ -487,22 +597,6 @@ return msg;</pre>
           <tr><td>GitHub</td><td><a href="https://github.com/MetalOctopus/RAPT-to-MQTT" target="_blank">MetalOctopus/RAPT-to-MQTT</a></td></tr>
           <tr><td>RAPT Portal</td><td><a href="https://app.rapt.io" target="_blank">app.rapt.io</a></td></tr>
           <tr><td>RAPT API Docs</td><td><a href="https://api.rapt.io/index.html" target="_blank">api.rapt.io/index.html</a></td></tr>
-        </table>
-      </div>
-
-      <div class="panel">
-        <h2>Claude Upgrade Suggestions</h2>
-        <table class="info-table">
-          <tr><td>RAPT Pill Support</td><td>Add hydrometer polling — gravity, temp, battery via cloud API</td></tr>
-          <tr><td>Home Assistant MQTT Discovery</td><td>Auto-create HA sensors via <code>homeassistant/sensor/...</code> config topics</td></tr>
-          <tr><td>Multi-TILT Support</td><td>Differentiate by color in MQTT topic, support 8 simultaneous TILTs</td></tr>
-          <tr><td>Fermentation Profiles</td><td>Step temperature schedules (e.g. 18&deg;C for 7d, ramp to 21&deg;C over 2d)</td></tr>
-          <tr><td>Gravity-Based Alerts</td><td>Notify when FG reached, fermentation stalled, or temp out of range</td></tr>
-          <tr><td>Brewfather Integration</td><td>Pull recipe data, push live readings to Brewfather batch</td></tr>
-          <tr><td>Historical Data Export</td><td>CSV/JSON export of fermentation data for analysis</td></tr>
-          <tr><td>Webhook Notifications</td><td>Push alerts to Slack, Discord, or email on brew events</td></tr>
-          <tr><td>Device Photo Upload</td><td>Attach photos to devices so you know what's what while shitfaced</td></tr>
-          <tr><td>ESP32 Tap Display</td><td>Push beer logo, ABV, brew date to an e-ink or TFT tap handle display</td></tr>
         </table>
       </div>
     </div>

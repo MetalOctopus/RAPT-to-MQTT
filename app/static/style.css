@@ -101,6 +101,11 @@ body {
   background: transparent;
 }
 
+.nav-newbrew {
+  color: #2ea043;
+  font-weight: 600;
+}
+
 .device-list {
   display: flex;
   flex-direction: column;
@@ -232,6 +237,27 @@ button:disabled {
   color: #fff;
 }
 
+.btn-tiny {
+  padding: 2px 8px;
+  font-size: 0.75em;
+  border-radius: 4px;
+}
+
+.inline-edit-btn {
+  background: none;
+  border: none;
+  color: #58a6ff;
+  font-size: 0.65em;
+  padding: 0 4px;
+  cursor: pointer;
+  text-transform: lowercase;
+  vertical-align: super;
+}
+
+.inline-edit-btn:hover {
+  text-decoration: underline;
+}
+
 .controls {
   display: flex;
   align-items: center;
@@ -342,6 +368,12 @@ button:disabled {
   color: #58a6ff;
 }
 
+.card-hint {
+  font-size: 0.7em;
+  color: #f0883e;
+  margin-top: 4px;
+}
+
 /* --- Info tables --- */
 .info-table {
   width: 100%;
@@ -404,11 +436,6 @@ button:disabled {
   margin-bottom: 8px;
 }
 
-.help-list ul {
-  padding-left: 20px;
-  margin-top: 4px;
-}
-
 .panel p {
   font-size: 0.85em;
   line-height: 1.6;
@@ -439,19 +466,6 @@ code {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 0.9em;
   color: #e6edf3;
-}
-
-pre.code-block {
-  background: #0d1117;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  padding: 12px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 0.8em;
-  line-height: 1.5;
-  color: #7ee787;
-  overflow-x: auto;
-  margin: 8px 0;
 }
 
 /* --- Sub-tabs --- */
@@ -514,84 +528,197 @@ pre.code-block {
   width: 100%;
 }
 
-/* --- Gauge --- */
-.gauge-container {
-  padding: 8px 0;
-}
-
-.gauge-bar {
-  height: 24px;
-  background: #21262d;
-  border-radius: 12px;
-  overflow: hidden;
-  position: relative;
-}
-
-.gauge-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #238636, #2ea043, #f0883e, #da3633);
-  border-radius: 12px;
-  transition: width 0.6s ease;
-  width: 0%;
-}
-
-.gauge-labels {
+/* --- Needle Gauge --- */
+.gauge-needle-container {
   display: flex;
-  justify-content: space-between;
-  margin-top: 6px;
-  font-size: 0.75em;
-  color: #8b949e;
-}
-
-/* --- Info tips --- */
-.info-tip {
-  display: inline-block;
-  cursor: help;
-  color: #484f58;
-  font-size: 0.85em;
-  vertical-align: middle;
-  position: relative;
-}
-
-.info-tip:hover {
-  color: #8b949e;
-}
-
-/* --- Brew events --- */
-.brew-event {
+  justify-content: center;
   padding: 8px 0;
+}
+
+.needle-gauge {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+}
+
+/* --- Brew Tiles --- */
+.brew-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.brew-tile {
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+}
+
+.brew-tile:hover {
+  border-color: #58a6ff;
+  transform: translateY(-1px);
+}
+
+.brew-tile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.brew-tile-header strong {
+  color: #e6edf3;
+  font-size: 1em;
+}
+
+.brew-tile-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.brew-tile-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brew-tile-label {
+  font-size: 0.65em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #8b949e;
+}
+
+.brew-tile-value {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: #58a6ff;
+}
+
+.brew-tile-bar {
+  height: 4px;
+  background: #21262d;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.brew-tile-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #238636, #2ea043, #f0883e);
+  border-radius: 2px;
+  transition: width 0.6s ease;
+}
+
+/* --- Brew Log (text-based) --- */
+.brew-log-text {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.brew-log-entry {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 6px 0;
   border-bottom: 1px solid #21262d;
   font-size: 0.85em;
-  line-height: 1.5;
 }
 
-.brew-event:last-child {
+.brew-log-entry:last-child {
   border-bottom: none;
 }
 
-.brew-event-time {
+.brew-log-entry.dim {
+  color: #484f58;
+  font-style: italic;
+}
+
+.brew-log-day {
+  color: #58a6ff;
+  font-weight: 600;
+  min-width: 48px;
+  font-size: 0.85em;
+}
+
+.brew-log-time {
   color: #484f58;
   font-size: 0.8em;
-  margin-right: 8px;
+  min-width: 100px;
 }
 
-.brew-event strong {
+.brew-log-type {
   color: #e6edf3;
+  font-weight: 600;
+  min-width: 80px;
 }
 
-/* --- Brew history items --- */
-.brew-history-item {
-  padding: 8px 0;
+.brew-log-desc {
+  color: #c9d1d9;
+}
+
+/* --- Reminders --- */
+.reminder-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+
+.reminder-form select,
+.reminder-form input {
+  padding: 6px 10px;
+  font-size: 0.85em;
+}
+
+.reminder-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
   border-bottom: 1px solid #21262d;
   font-size: 0.85em;
 }
 
-.brew-history-item:last-child {
+.reminder-item:last-child {
   border-bottom: none;
 }
 
-.brew-history-item strong {
-  color: #e6edf3;
+.reminder-trigger {
+  color: #58a6ff;
+  font-weight: 600;
+  min-width: 80px;
+}
+
+.reminder-msg {
+  color: #c9d1d9;
+  flex: 1;
+}
+
+.reminder-icon {
+  color: #8b949e;
+  font-size: 0.8em;
+}
+
+.badge-sm {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 0.7em;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-sm.pending {
+  background: #f0883e33;
+  color: #f0883e;
+}
+
+.badge-sm.fired {
+  background: #23864633;
+  color: #2ea043;
 }
 
 /* --- Dim values --- */
@@ -675,6 +802,34 @@ pre.code-block {
   padding: 6px 14px;
 }
 
+/* --- Brew history items --- */
+.brew-history-item {
+  padding: 8px 0;
+  border-bottom: 1px solid #21262d;
+  font-size: 0.85em;
+}
+
+.brew-history-item:last-child {
+  border-bottom: none;
+}
+
+.brew-history-item strong {
+  color: #e6edf3;
+}
+
+/* --- Info tips --- */
+.info-tip {
+  display: inline-block;
+  cursor: help;
+  color: #484f58;
+  font-size: 0.85em;
+  vertical-align: middle;
+}
+
+.info-tip:hover {
+  color: #8b949e;
+}
+
 /* --- Responsive --- */
 @media (max-width: 768px) {
   .sidebar {
@@ -698,6 +853,9 @@ pre.code-block {
   .chart-container {
     height: 250px;
   }
+  .reminder-form {
+    flex-direction: column;
+  }
 }
 
 @media (max-width: 540px) {
@@ -719,6 +877,9 @@ pre.code-block {
     grid-template-columns: 1fr;
   }
   .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .brew-tile-grid {
     grid-template-columns: 1fr;
   }
   .sub-tabs {

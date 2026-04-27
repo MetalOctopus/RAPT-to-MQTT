@@ -29,6 +29,24 @@ class RaptBridge:
         self._headers = {
             "Accept": "application/json",
         }
+        # TILT change detection — only record to history on meaningful change
+        self._tilt_last = {}  # device_id -> {temp, sg, rssi_bucket}
+
+    @staticmethod
+    def _rssi_bucket(rssi):
+        """Convert RSSI dBm value to 1-5 signal quality bucket."""
+        if rssi is None:
+            return 0
+        v = int(rssi)
+        if v >= -40:
+            return 5
+        if v >= -50:
+            return 4
+        if v >= -60:
+            return 3
+        if v >= -70:
+            return 2
+        return 1
 
     @property
     def is_running(self):
@@ -67,7 +85,6 @@ class RaptBridge:
         try:
             self._mqtt_client = mqtt.Client()
 
-            # Set MQTT credentials if provided
             username = self._config.get("mqtt_username", "")
             password = self._config.get("mqtt_password", "")
             if username:
@@ -99,7 +116,6 @@ class RaptBridge:
                 except Exception as e:
                     self._logger.error(f"Unexpected error in poll loop: {e}")
 
-                # Wait for poll_interval, but wake up immediately if stop() is called
                 self._stop_event.wait(timeout=poll_interval)
 
         except Exception as e:
@@ -135,7 +151,6 @@ class RaptBridge:
                 return
 
             payload = msg.payload.decode("utf-8")
-            # Original format: payload is "Temperature" : "xx.xx" (without braces)
             target_temp = json.loads("{" + payload + "}")
             target_temp = target_temp["Temperature"]
             self._logger.info(f"New temperature requested: {target_temp}")
@@ -144,13 +159,11 @@ class RaptBridge:
             self._logger.error(f"Error processing MQTT command: {e}")
 
     def _handle_tilt_message(self, msg):
-        """Process incoming TILT hydrometer data from MQTT."""
+        """Process incoming TILT hydrometer data with RSSI bucketing and change detection."""
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
 
-            # Support both old format (major/minor) and new enriched format
             if "sg" in payload:
-                # New enriched format
                 sg = float(payload["sg"])
                 temp_c = round((float(payload.get("temperature_raw", 0)) - 32) * 5 / 9, 1)
                 temp_f = float(payload.get("temperature_raw", 0))
@@ -158,9 +171,8 @@ class RaptBridge:
                 beer = payload.get("beer", "")
                 rssi = payload.get("rssi")
                 mac = payload.get("mac", "")
-                uuid = payload.get("uuid", "")
+                uuid_str = payload.get("uuid", "")
             elif "major" in payload and "minor" in payload:
-                # Old format: {major: temp_f, minor: sg*1000}
                 temp_f = float(payload["major"])
                 sg = float(payload["minor"]) / 1000.0
                 temp_c = round((temp_f - 32) * 5 / 9, 1)
@@ -168,20 +180,17 @@ class RaptBridge:
                 beer = ""
                 rssi = None
                 mac = ""
-                uuid = ""
+                uuid_str = ""
             else:
                 return
 
+            device_id = "tilt-hydrometer"
             name = f"TILT {color}" if color != "Unknown" else "TILT Hydrometer"
             if beer and beer.lower() not in ("", "untitled"):
                 name += f" ({beer})"
 
-            self._logger.info(
-                f"TILT {color} | Temp: {temp_f}°F ({temp_c}°C) | SG: {round(sg * 1000)}"
-            )
-
             device = {
-                "id": "tilt-hydrometer",
+                "id": device_id,
                 "name": name,
                 "deviceType": "TILT",
                 "temperature": temp_c,
@@ -193,22 +202,41 @@ class RaptBridge:
                 "rssi": rssi,
                 "tiltColor": color,
                 "tiltBeer": beer,
-                "tiltUuid": uuid,
+                "tiltUuid": uuid_str,
                 "_last_seen": datetime.now().isoformat(),
                 "_source": "mqtt",
             }
 
+            # Always update in-memory device (cheap, keeps UI responsive)
             with self._devices_lock:
-                self._devices["tilt-hydrometer"] = device
+                self._devices[device_id] = device
 
-            # Record history
-            if self._history:
-                self._history.record("tilt-hydrometer", {
-                    "temperature": temp_c,
-                    "temperature_f": temp_f,
-                    "specificGravity": sg * 1000,
-                    "rssi": rssi if rssi else None,
-                })
+            # Only record to history when temp, SG, or RSSI bucket actually changes
+            rssi_bucket = self._rssi_bucket(rssi)
+            last = self._tilt_last.get(device_id, {})
+
+            temp_changed = abs(temp_c - last.get("temp", float("inf"))) > 0.05
+            sg_changed = abs(sg - last.get("sg", float("inf"))) > 0.0002
+            rssi_changed = rssi_bucket != last.get("rssi_bucket", -1)
+
+            if temp_changed or sg_changed or rssi_changed:
+                self._tilt_last[device_id] = {
+                    "temp": temp_c,
+                    "sg": sg,
+                    "rssi_bucket": rssi_bucket,
+                }
+
+                self._logger.info(
+                    f"TILT {color} | Temp: {temp_f}\u00b0F ({temp_c}\u00b0C) | SG: {round(sg * 1000)}"
+                )
+
+                if self._history:
+                    self._history.record(device_id, {
+                        "temperature": temp_c,
+                        "temperature_f": temp_f,
+                        "specificGravity": sg * 1000,
+                        "rssi": rssi if rssi else None,
+                    })
 
         except Exception as e:
             self._logger.error(f"Error processing TILT message: {e}")
@@ -272,13 +300,11 @@ class RaptBridge:
             self._logger.warning("No temperature controllers found.")
             return None
 
-        # Cache all discovered devices
         with self._devices_lock:
             for controller in response:
                 controller["_last_seen"] = datetime.now().isoformat()
                 self._devices[controller["id"]] = controller
 
-        # Process first controller for MQTT (backward compat)
         controller = response[0]
         device_id = controller["id"]
         current_temp = "%.2f" % controller["temperature"]
@@ -288,10 +314,9 @@ class RaptBridge:
         self._logger.info(
             f"{datetime.now().strftime('%B %d - %H:%M')} | "
             f"{name} | "
-            f"Current: {current_temp}°C | Target: {target_temp}°C"
+            f"Current: {current_temp}\u00b0C | Target: {target_temp}\u00b0C"
         )
 
-        # Publish to MQTT using the persistent client connection
         payload = json.dumps({
             "device_id": device_id,
             "name": name,
@@ -304,7 +329,6 @@ class RaptBridge:
         })
         self._mqtt_client.publish(self.PUBLISH_TOPIC, payload)
 
-        # Record history
         if self._history:
             for ctrl in response:
                 cid = ctrl["id"]
@@ -318,10 +342,11 @@ class RaptBridge:
 
         return device_id
 
+    # --- Public control methods ---
+
     def set_target_temperature(self, target, device_id=None):
-        """Public method to set target temperature. Used by brew feedback loop."""
+        """Set target temperature. Used by brew feedback loop and control tab."""
         if not device_id:
-            # Use first known controller
             with self._devices_lock:
                 for did, dev in self._devices.items():
                     if dev.get("deviceType") != "TILT":
@@ -330,7 +355,44 @@ class RaptBridge:
         if not device_id:
             self._logger.error("Cannot set temperature: no controller found.")
             return
-        self._set_temperature_for_device(target, device_id)
+        self._set_temperature_for_device(round(float(target), 1), device_id)
+
+    def set_pid_enabled(self, state, device_id):
+        """Enable or disable PID control on a RAPT controller."""
+        url = f"{self.API_ENDPOINT}TemperatureControllers/SetPIDEnabled"
+        payload = {"temperatureControllerId": device_id, "state": bool(state)}
+        self._logger.info(f"Setting PID {'enabled' if state else 'disabled'}...")
+        r = requests.post(url, data=payload, headers=self._headers)
+        r.raise_for_status()
+        self._logger.info(f"PID set: {r.json()}")
+        time.sleep(2)
+        self._update_mqtt()
+
+    def set_pid_values(self, device_id, p, i, d):
+        """Set PID tuning parameters on a RAPT controller."""
+        url = f"{self.API_ENDPOINT}TemperatureControllers/SetPID"
+        payload = {"temperatureControllerId": device_id, "p": p, "i": i, "d": d}
+        self._logger.info(f"Setting PID P={p} I={i} D={d}...")
+        r = requests.post(url, data=payload, headers=self._headers)
+        r.raise_for_status()
+        self._logger.info(f"PID values set: {r.json()}")
+        time.sleep(2)
+        self._update_mqtt()
+
+    def publish_notification(self, title, message, icon="mdi:beer"):
+        """Publish an MQTT notification for Home Assistant / HACS."""
+        if not self._mqtt_client:
+            self._logger.warning("Cannot publish notification: MQTT not connected")
+            return
+        topic = self._config.get("notification_topic", "RAPT2MQTT/notify")
+        payload = json.dumps({
+            "title": title,
+            "message": message,
+            "icon": icon,
+            "timestamp": datetime.now().isoformat(),
+        })
+        self._mqtt_client.publish(topic, payload)
+        self._logger.info(f"Notification: {title} - {message}")
 
     def _set_temperature(self, target):
         """Set target temperature via MQTT command (legacy)."""
@@ -348,12 +410,11 @@ class RaptBridge:
             "target": target,
         }
 
-        self._logger.info(f"Setting target temperature to {target}°C...")
+        self._logger.info(f"Setting target temperature to {target}\u00b0C...")
         r = requests.post(url, data=payload, headers=self._headers)
         r.raise_for_status()
         response = r.json()
         self._logger.info(f"Set temperature response: {response}")
 
-        # Give RAPT a moment to update, then publish new readings
         time.sleep(5)
         self._update_mqtt()

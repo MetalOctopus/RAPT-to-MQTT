@@ -9,27 +9,47 @@ const deviceListEl = document.getElementById("device-list");
 const MAX_LINES = 500;
 let currentPage = "config";
 let currentDeviceId = null;
+let currentBrewId = null;
+
+/* Chart instances (persisted across navigation) */
 let dashboardChart = null;
 let dashboardSeries = [];
 let deviceChart = null;
 let deviceSeries = [];
 let rssiChart = null;
 let feedbackChart = null;
+let tiltTempChart = null;
+let tiltSgChart = null;
+let brewCharts = {};      // sessionId -> Chart instance
+let brewChartSeries = {}; // sessionId -> series array
+
+/* Dashboard toggles */
+let dashboardEnabled = {};
+const chartColors = ["#58a6ff", "#f0883e", "#2ea043", "#bc8cff", "#f85149", "#79c0ff", "#d29922", "#7ee787"];
+let colorIdx = 0;
 
 /* --- Navigation --- */
-function showPage(page, deviceId) {
+function showPage(page, id) {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
 
-  if (page === "device" && deviceId) {
+  if (page === "device" && id) {
     document.getElementById("page-device").classList.add("active");
-    const navItem = document.querySelector(`.nav-item[data-device="${deviceId}"]`);
+    const navItem = document.querySelector(`.nav-item[data-device="${id}"]`);
     if (navItem) navItem.classList.add("active");
     currentPage = "device";
-    currentDeviceId = deviceId;
-    loadDevice(deviceId);
+    currentDeviceId = id;
+    currentBrewId = null;
+    loadDevice(id);
     showSubtab("overview");
-    loadDeviceMetrics(deviceId);
+    loadDeviceMetrics(id);
+  } else if (page === "brew-detail" && id) {
+    document.getElementById("page-brew-detail").classList.add("active");
+    document.querySelector('[data-page="brews"]').classList.add("active");
+    currentPage = "brew-detail";
+    currentBrewId = id;
+    currentDeviceId = null;
+    loadBrewDetail(id);
   } else {
     const pageEl = document.getElementById("page-" + page);
     if (pageEl) pageEl.classList.add("active");
@@ -37,8 +57,10 @@ function showPage(page, deviceId) {
     if (navItem) navItem.classList.add("active");
     currentPage = page;
     currentDeviceId = null;
+    if (page !== "brew-detail") currentBrewId = null;
     if (page === "dashboard") { refreshDashboard(); loadChartDeviceList(); }
-    if (page === "brew") loadBrewState();
+    if (page === "brews") loadBrewsPage();
+    if (page === "newbrew") loadNewBrewForm();
   }
 }
 
@@ -84,7 +106,7 @@ function showToast(msg, type) {
 
 /* --- Helpers --- */
 function formatSeconds(secs) {
-  if (secs == null || isNaN(secs)) return "—";
+  if (secs == null || isNaN(secs)) return "--";
   const s = Math.round(secs);
   if (s < 60) return s + "s";
   if (s < 3600) return Math.floor(s / 60) + "m " + (s % 60) + "s";
@@ -100,25 +122,36 @@ function formatSeconds(secs) {
 }
 
 function formatTemp(val, unit) {
-  if (val == null || isNaN(val)) return "—";
-  return parseFloat(val).toFixed(1) + (unit === "F" ? "°F" : "°C");
+  if (val == null || isNaN(val)) return "--";
+  return parseFloat(val).toFixed(1) + (unit === "F" ? "\u00b0F" : "\u00b0C");
 }
 
 function boolText(val) {
   if (val === true) return "Enabled";
   if (val === false) return "Disabled";
-  return "—";
+  return "--";
 }
 
 function rssiLabel(rssi) {
-  if (rssi == null || isNaN(rssi)) return "—";
+  if (rssi == null || isNaN(rssi)) return "--";
   const v = parseInt(rssi);
   let bars, label;
-  if (v >= -50) { bars = "▂▄▆█"; label = "Excellent"; }
-  else if (v >= -60) { bars = "▂▄▆"; label = "Good"; }
-  else if (v >= -70) { bars = "▂▄"; label = "Fair"; }
-  else { bars = "▂"; label = "Weak"; }
+  if (v >= -40) { bars = "\u2582\u2584\u2586\u2588\u2588"; label = "Excellent"; }
+  else if (v >= -50) { bars = "\u2582\u2584\u2586\u2588"; label = "Great"; }
+  else if (v >= -60) { bars = "\u2582\u2584\u2586"; label = "Good"; }
+  else if (v >= -70) { bars = "\u2582\u2584"; label = "Fair"; }
+  else { bars = "\u2582"; label = "Weak"; }
   return bars + "  " + label + " (" + v + " dBm)";
+}
+
+function rssiIcon(rssi) {
+  if (rssi == null) return "";
+  const v = parseInt(rssi);
+  if (v >= -40) return " \u2582\u2584\u2586\u2588\u2588";
+  if (v >= -50) return " \u2582\u2584\u2586\u2588";
+  if (v >= -60) return " \u2582\u2584\u2586";
+  if (v >= -70) return " \u2582\u2584";
+  return " \u2582";
 }
 
 function timeAgo(isoStr) {
@@ -129,6 +162,11 @@ function timeAgo(isoStr) {
   if (secs < 3600) return Math.floor(secs / 60) + "m ago";
   if (secs < 86400) return Math.floor(secs / 3600) + "h " + Math.floor((secs % 3600) / 60) + "m ago";
   return Math.floor(secs / 86400) + "d ago";
+}
+
+function daysSince(isoStr) {
+  if (!isoStr) return 0;
+  return (Date.now() - new Date(isoStr).getTime()) / 86400000;
 }
 
 function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
@@ -160,6 +198,7 @@ async function loadConfig() {
     document.getElementById("rapt_email").value = cfg.rapt_email || "";
     document.getElementById("rapt_secret").value = cfg.rapt_secret || "";
     document.getElementById("poll_interval").value = cfg.poll_interval || 300;
+    document.getElementById("notification_topic").value = cfg.notification_topic || "RAPT2MQTT/notify";
     document.getElementById("auto_start").checked = cfg.auto_start !== false;
   } catch (e) { showToast("Failed to load config", "error"); }
 }
@@ -173,6 +212,7 @@ async function saveConfig() {
     rapt_email: document.getElementById("rapt_email").value,
     rapt_secret: document.getElementById("rapt_secret").value,
     poll_interval: document.getElementById("poll_interval").value,
+    notification_topic: document.getElementById("notification_topic").value,
     auto_start: document.getElementById("auto_start").checked,
   };
   try {
@@ -206,6 +246,7 @@ async function loadDevices() {
   try {
     const res = await fetch("/api/devices");
     const devices = await res.json();
+    window._cachedDevices = devices;
     const ids = Object.keys(devices);
     if (ids.length === 0) {
       deviceListEl.innerHTML = '<div class="nav-item dim">No devices discovered</div>';
@@ -219,15 +260,7 @@ async function loadDevices() {
       el.className = "nav-item" + (currentDeviceId === id ? " active" : "");
       el.setAttribute("data-device", id);
       el.href = "#";
-      const rssi = dev.rssi;
-      let rssiIcon = "";
-      if (rssi != null) {
-        if (rssi >= -50) rssiIcon = " ▂▄▆█";
-        else if (rssi >= -60) rssiIcon = " ▂▄▆";
-        else if (rssi >= -70) rssiIcon = " ▂▄";
-        else rssiIcon = " ▂";
-      }
-      el.textContent = name + rssiIcon;
+      el.textContent = name + rssiIcon(dev.rssi);
       el.addEventListener("click", (e) => { e.preventDefault(); showPage("device", id); });
       deviceListEl.appendChild(el);
     });
@@ -256,20 +289,23 @@ function renderDevice(dev) {
   connBadge.textContent = isOnline ? "Online" : "Offline";
   connBadge.className = "badge " + (isOnline ? "online" : "offline");
 
-  // Show/hide per device type
   document.getElementById("card-target-temp").style.display = isTilt ? "none" : "";
   document.getElementById("card-gravity").style.display = isTilt ? "" : "none";
   document.getElementById("card-cooling").style.display = isTilt ? "none" : "";
   document.getElementById("card-heating").style.display = isTilt ? "none" : "";
   document.querySelectorAll(".rapt-only").forEach(el => el.style.display = isTilt ? "none" : "");
 
+  // TILT default charts
+  document.getElementById("tilt-default-charts").style.display = isTilt ? "block" : "none";
+  if (isTilt) loadTiltDefaultCharts(dev.id);
+
   if (isTilt) {
     const tempStr = dev.temperature != null
-      ? formatTemp(dev.temperature, "C") + " (" + dev.temperature_f + "°F)"
-      : "—";
+      ? formatTemp(dev.temperature, "C") + " (" + dev.temperature_f + "\u00b0F)"
+      : "--";
     document.getElementById("device-current-temp").textContent = tempStr;
     document.getElementById("device-gravity").textContent =
-      dev.specificGravity != null ? Math.round(dev.specificGravity * 1000) : "—";
+      dev.specificGravity != null ? Math.round(dev.specificGravity * 1000) : "--";
   } else {
     document.getElementById("device-current-temp").textContent = formatTemp(dev.temperature, unit);
     document.getElementById("device-target-temp").textContent = formatTemp(dev.targetTemperature, unit);
@@ -277,22 +313,17 @@ function renderDevice(dev) {
     document.getElementById("device-heating").textContent = boolText(dev.heatingEnabled);
   }
 
-  document.getElementById("info-name").textContent = dev.name || "—";
-  document.getElementById("info-type").textContent = dev.deviceType || "—";
-  document.getElementById("info-use").textContent = dev.customerUse || "—";
-  document.getElementById("info-mac").textContent = dev.macAddress || "—";
-  document.getElementById("info-firmware").textContent = dev.firmwareVersion || "—";
+  document.getElementById("info-name").textContent = dev.name || "--";
+  document.getElementById("info-type").textContent = dev.deviceType || "--";
+  document.getElementById("info-use").textContent = dev.customerUse || "--";
+  document.getElementById("info-mac").textContent = dev.macAddress || "--";
+  document.getElementById("info-firmware").textContent = dev.firmwareVersion || "--";
   document.getElementById("info-rssi").textContent = rssiLabel(dev.rssi);
   document.getElementById("info-unit").textContent = unit === "F" ? "Fahrenheit" : "Celsius";
-  document.getElementById("info-sensor").textContent = dev.useInternalSensor === true ? "Internal" : dev.useInternalSensor === false ? "External" : "—";
+  document.getElementById("info-sensor").textContent = dev.useInternalSensor === true ? "Internal" : dev.useInternalSensor === false ? "External" : "--";
 
-  // Telemetry frequency: value is in seconds from API, display as human readable
   const tf = dev.telemetryFrequency;
-  if (tf != null) {
-    document.getElementById("info-telemetry").textContent = formatSeconds(tf * 60);
-  } else {
-    document.getElementById("info-telemetry").textContent = "—";
-  }
+  document.getElementById("info-telemetry").textContent = tf != null ? formatSeconds(tf * 60) : "--";
 
   document.getElementById("row-use").style.display = isTilt ? "none" : "";
   document.getElementById("row-sensor").style.display = isTilt ? "none" : "";
@@ -303,28 +334,88 @@ function renderDevice(dev) {
     document.getElementById("info-last-activity").textContent =
       new Date(lastActivity).toLocaleString() + " (" + timeAgo(lastActivity) + ")";
   } else {
-    document.getElementById("info-last-activity").textContent = "—";
+    document.getElementById("info-last-activity").textContent = "--";
   }
 
   document.getElementById("stats-total").textContent = formatSeconds(dev.totalRunTime);
   document.getElementById("stats-cooling-time").textContent = formatSeconds(dev.coolingRunTime);
-  document.getElementById("stats-cooling-starts").textContent = dev.coolingStarts != null ? dev.coolingStarts : "—";
+  document.getElementById("stats-cooling-starts").textContent = dev.coolingStarts != null ? dev.coolingStarts : "--";
   document.getElementById("stats-heating-time").textContent = formatSeconds(dev.heatingRunTime);
-  document.getElementById("stats-heating-starts").textContent = dev.heatingStarts != null ? dev.heatingStarts : "—";
+  document.getElementById("stats-heating-starts").textContent = dev.heatingStarts != null ? dev.heatingStarts : "--";
 
   document.getElementById("settings-pid").textContent = boolText(dev.pidEnabled);
-  document.getElementById("settings-cool-hyst").textContent = dev.coolingHysteresis != null ? dev.coolingHysteresis + "°" : "—";
-  document.getElementById("settings-heat-hyst").textContent = dev.heatingHysteresis != null ? dev.heatingHysteresis + "°" : "—";
-  document.getElementById("settings-compressor").textContent = dev.compressorDelay != null ? dev.compressorDelay + " min" : "—";
-  document.getElementById("settings-mode-switch").textContent = dev.modeSwitchDelay != null ? dev.modeSwitchDelay + " min" : "—";
-  document.getElementById("settings-high-alarm").textContent = dev.highTempAlarm != null ? formatTemp(dev.highTempAlarm, unit) : "—";
-  document.getElementById("settings-low-alarm").textContent = dev.lowTempAlarm != null ? formatTemp(dev.lowTempAlarm, unit) : "—";
+  document.getElementById("settings-cool-hyst").textContent = dev.coolingHysteresis != null ? dev.coolingHysteresis + "\u00b0" : "--";
+  document.getElementById("settings-heat-hyst").textContent = dev.heatingHysteresis != null ? dev.heatingHysteresis + "\u00b0" : "--";
+  document.getElementById("settings-compressor").textContent = dev.compressorDelay != null ? dev.compressorDelay + " min" : "--";
+  document.getElementById("settings-mode-switch").textContent = dev.modeSwitchDelay != null ? dev.modeSwitchDelay + " min" : "--";
+  document.getElementById("settings-high-alarm").textContent = dev.highTempAlarm != null ? formatTemp(dev.highTempAlarm, unit) : "--";
+  document.getElementById("settings-low-alarm").textContent = dev.lowTempAlarm != null ? formatTemp(dev.lowTempAlarm, unit) : "--";
   document.getElementById("settings-bluetooth").textContent = boolText(dev.bluetoothEnabled);
 }
 
-/* --- Dashboard --- */
-let dashboardEnabled = {};
+/* --- TILT Default Charts --- */
+async function loadTiltDefaultCharts(deviceId) {
+  try {
+    const start = (Date.now() / 1000) - 86400;
 
+    // Temperature chart with red-blue gradient (4-30 C)
+    const tempData = await (await fetch(`/api/history/${deviceId}/temperature?start=${start}&limit=10000`)).json();
+    if (tiltTempChart) { tiltTempChart.destroy(); tiltTempChart = null; }
+    if (tempData.length) {
+      const ctx = document.getElementById("tilt-temp-chart").getContext("2d");
+      const grad = ctx.createLinearGradient(0, 0, 0, 300);
+      grad.addColorStop(0, "rgba(218, 54, 51, 0.6)");   // hot red at top (30C)
+      grad.addColorStop(1, "rgba(88, 166, 255, 0.6)");   // cold blue at bottom (4C)
+      tiltTempChart = new Chart(ctx, {
+        type: "line",
+        data: { datasets: [{
+          label: "Temperature (\u00b0C)",
+          data: tempData.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+          borderColor: "#f0883e",
+          backgroundColor: grad,
+          fill: true, borderWidth: 2, pointRadius: 0, tension: 0.3,
+        }]},
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { type: "time", time: { tooltipFormat: "HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm" } },
+                 ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+            y: { min: 4, max: 30, ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+          },
+          plugins: { legend: { labels: { color: "#c9d1d9" } } },
+        },
+      });
+    }
+
+    // SG chart with theme-appropriate line
+    const sgData = await (await fetch(`/api/history/${deviceId}/specificGravity?start=${start}&limit=10000`)).json();
+    if (tiltSgChart) { tiltSgChart.destroy(); tiltSgChart = null; }
+    if (sgData.length) {
+      const ctx2 = document.getElementById("tilt-sg-chart").getContext("2d");
+      tiltSgChart = new Chart(ctx2, {
+        type: "line",
+        data: { datasets: [{
+          label: "Specific Gravity",
+          data: sgData.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+          borderColor: "#c9d1d9",
+          backgroundColor: "rgba(201, 209, 217, 0.1)",
+          fill: true, borderWidth: 2, pointRadius: 0, tension: 0.3,
+        }]},
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { type: "time", time: { tooltipFormat: "HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm" } },
+                 ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+            y: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+          },
+          plugins: { legend: { labels: { color: "#c9d1d9" } } },
+        },
+      });
+    }
+  } catch (e) {}
+}
+
+/* --- Dashboard --- */
 function refreshDashboard() { updateDashboardSelect(); updateDashboardCards(); }
 
 async function updateDashboardSelect() {
@@ -365,21 +456,12 @@ async function updateDashboardCards() {
       card.className = "panel dash-card";
       const connState = (dev.connectionState || "").toLowerCase();
       const isOnline = connState === "connected" || connState === "online";
-      const rssi = dev.rssi;
-      let rssiIcon = "";
-      if (rssi != null) {
-        if (rssi >= -50) rssiIcon = " ▂▄▆█";
-        else if (rssi >= -60) rssiIcon = " ▂▄▆";
-        else if (rssi >= -70) rssiIcon = " ▂▄";
-        else rssiIcon = " ▂";
-      }
 
       let html = `<div class="dash-card-header">
-        <strong>${esc(dev.name || id.substring(0, 8))}${rssiIcon}</strong>
+        <strong>${esc(dev.name || id.substring(0, 8))}${rssiIcon(dev.rssi)}</strong>
         <span class="badge ${isOnline ? 'online' : 'offline'}">${isOnline ? 'Online' : 'Offline'}</span>
       </div><div class="dash-card-metrics">`;
 
-      // Main metrics first
       html += `<div class="dash-metric"><span class="dash-metric-label">Temp</span><span class="dash-metric-value">${formatTemp(dev.temperature, unit)}</span></div>`;
       if (isTilt && dev.specificGravity != null) {
         html += `<div class="dash-metric"><span class="dash-metric-label">SG</span><span class="dash-metric-value">${Math.round(dev.specificGravity * 1000)}</span></div>`;
@@ -395,13 +477,10 @@ async function updateDashboardCards() {
           if (temp != null && target != null) {
             if (temp > target) html += `<div class="dash-metric"><span class="dash-metric-label">Mode</span><span class="dash-metric-value active-cool">Cooling</span></div>`;
             else html += `<div class="dash-metric"><span class="dash-metric-label">Mode</span><span class="dash-metric-value active-heat">Heating</span></div>`;
-          } else {
-            html += `<div class="dash-metric"><span class="dash-metric-label">Mode</span><span class="dash-metric-value">Auto</span></div>`;
           }
         }
       }
 
-      // Updated at bottom
       const lastSeen = dev._last_seen || dev.lastActivityTime;
       if (lastSeen) {
         html += `<div class="dash-metric dash-metric-updated"><span class="dash-metric-label">Updated</span><span class="dash-metric-value dim-value">${timeAgo(lastSeen)}</span></div>`;
@@ -414,9 +493,6 @@ async function updateDashboardCards() {
 }
 
 /* --- Charts --- */
-const chartColors = ["#58a6ff", "#f0883e", "#2ea043", "#bc8cff", "#f85149", "#79c0ff", "#d29922", "#7ee787"];
-let colorIdx = 0;
-
 async function loadChartDeviceList() {
   try {
     const devices = await (await fetch("/api/devices")).json();
@@ -439,8 +515,7 @@ async function loadChartMetrics(deviceId, selectId) {
     sel.innerHTML = "";
     metrics.forEach(m => {
       const opt = document.createElement("option");
-      opt.value = m;
-      opt.textContent = m;
+      opt.value = m; opt.textContent = m;
       sel.appendChild(opt);
     });
   } catch (e) {}
@@ -449,23 +524,22 @@ async function loadChartMetrics(deviceId, selectId) {
 async function addChartSeries(chartObj, seriesArr, canvasId, deviceId, metric, range, axis) {
   try {
     const start = (Date.now() / 1000) - parseInt(range);
-    const data = await (await fetch(`/api/history/${deviceId}/${metric}?start=${start}&limit=2000`)).json();
-    if (!data.length) { showToast("No data for this range", "error"); return; }
+    const limit = parseInt(range) >= 604800 ? 10000 : 5000;
+    const data = await (await fetch(`/api/history/${deviceId}/${metric}?start=${start}&limit=${limit}`)).json();
+    if (!data.length) { showToast("No data for this range", "error"); return chartObj; }
 
     const color = chartColors[colorIdx++ % chartColors.length];
-    const devices = await (await fetch("/api/devices")).json();
+    const devices = window._cachedDevices || {};
     const devName = devices[deviceId]?.name || deviceId.substring(0, 8);
 
-    seriesArr.push({ deviceId, metric, axis, color });
+    seriesArr.push({ deviceId, metric, range, axis, color });
 
     const dataset = {
       label: `${devName} - ${metric}`,
       data: data.map(d => ({ x: d.timestamp * 1000, y: d.value })),
       borderColor: color,
       backgroundColor: color + "33",
-      borderWidth: 2,
-      pointRadius: 0,
-      tension: 0.3,
+      borderWidth: 2, pointRadius: 0, tension: 0.3,
       yAxisID: axis === "right" ? "y1" : "y",
     };
 
@@ -552,7 +626,7 @@ async function loadRssiChart(deviceId) {
   if (rssiChart) { rssiChart.destroy(); rssiChart = null; }
   try {
     const start = (Date.now() / 1000) - 86400;
-    const data = await (await fetch(`/api/history/${deviceId}/rssi?start=${start}&limit=2000`)).json();
+    const data = await (await fetch(`/api/history/${deviceId}/rssi?start=${start}&limit=5000`)).json();
     if (!data.length) return;
     const ctx = document.getElementById("rssi-chart").getContext("2d");
     rssiChart = new Chart(ctx, {
@@ -573,11 +647,15 @@ async function loadRssiChart(deviceId) {
 
 /* --- Device Control --- */
 function loadControlTab(deviceId) {
-  const devices = window._cachedDevices || {};
-  const dev = devices[deviceId];
-  if (dev && dev.targetTemperature != null) {
-    document.getElementById("ctrl-target-temp").value = dev.targetTemperature;
+  const dev = (window._cachedDevices || {})[deviceId];
+  if (!dev) return;
+  if (dev.targetTemperature != null) {
+    document.getElementById("ctrl-target-temp").value = parseFloat(dev.targetTemperature).toFixed(1);
   }
+  document.getElementById("ctrl-pid-status").textContent = dev.pidEnabled ? "Enabled" : "Disabled";
+  if (dev.pidProportional != null) document.getElementById("ctrl-pid-p").value = dev.pidProportional;
+  if (dev.pidIntegral != null) document.getElementById("ctrl-pid-i").value = dev.pidIntegral;
+  if (dev.pidDerivative != null) document.getElementById("ctrl-pid-d").value = dev.pidDerivative;
 }
 
 document.getElementById("btn-set-temp").addEventListener("click", async () => {
@@ -587,18 +665,127 @@ document.getElementById("btn-set-temp").addEventListener("click", async () => {
   try {
     const res = await fetch(`/api/devices/${currentDeviceId}/set_temperature`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target }),
+      body: JSON.stringify({ target: Math.round(target * 10) / 10 }),
     });
     const result = await res.json();
-    if (res.ok) showToast(`Target set to ${target}°C`, "success");
+    if (res.ok) showToast(`Target set to ${(Math.round(target * 10) / 10).toFixed(1)}\u00b0C`, "success");
     else showToast(result.error || "Failed", "error");
   } catch (e) { showToast("Failed to set temperature", "error"); }
 });
 
-/* --- Brew Session --- */
-async function loadBrewState() {
+document.getElementById("btn-pid-enable").addEventListener("click", async () => {
+  if (!currentDeviceId) return;
   try {
-    // Populate device selects
+    const res = await fetch(`/api/devices/${currentDeviceId}/set_pid_enabled`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state: true }),
+    });
+    if (res.ok) { showToast("PID enabled", "success"); loadControlTab(currentDeviceId); }
+    else showToast("Failed", "error");
+  } catch (e) { showToast("Failed", "error"); }
+});
+
+document.getElementById("btn-pid-disable").addEventListener("click", async () => {
+  if (!currentDeviceId) return;
+  try {
+    const res = await fetch(`/api/devices/${currentDeviceId}/set_pid_enabled`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state: false }),
+    });
+    if (res.ok) { showToast("PID disabled", "success"); loadControlTab(currentDeviceId); }
+    else showToast("Failed", "error");
+  } catch (e) { showToast("Failed", "error"); }
+});
+
+document.getElementById("btn-set-pid").addEventListener("click", async () => {
+  if (!currentDeviceId) return;
+  const p = parseFloat(document.getElementById("ctrl-pid-p").value);
+  const i = parseFloat(document.getElementById("ctrl-pid-i").value);
+  const d = parseFloat(document.getElementById("ctrl-pid-d").value);
+  if (isNaN(p) || isNaN(i) || isNaN(d)) { showToast("Enter valid PID values", "error"); return; }
+  try {
+    const res = await fetch(`/api/devices/${currentDeviceId}/set_pid`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ p, i, d }),
+    });
+    if (res.ok) showToast("PID values updated", "success");
+    else showToast("Failed", "error");
+  } catch (e) { showToast("Failed", "error"); }
+});
+
+/* --- Brews Page (tiles) --- */
+async function loadBrewsPage() {
+  try {
+    const brews = await (await fetch("/api/brews")).json();
+    const tilesEl = document.getElementById("brew-tiles");
+    const emptyEl = document.getElementById("brew-tiles-empty");
+    tilesEl.innerHTML = "";
+
+    if (!brews.length) {
+      emptyEl.style.display = "block";
+    } else {
+      emptyEl.style.display = "none";
+      brews.forEach(b => {
+        const tile = document.createElement("div");
+        tile.className = "panel brew-tile";
+        tile.style.cursor = "pointer";
+        tile.addEventListener("click", () => showPage("brew-detail", b.id));
+
+        const og = b.og;
+        const sg = b.current_sg;
+        const abv = b.current_abv;
+        const pct = (og && sg) ? Math.min(100, Math.max(0, Math.round(((og - sg) / (og - 1.010)) * 100))) : 0;
+        const days = daysSince(b.started_at).toFixed(1);
+
+        tile.innerHTML = `
+          <div class="brew-tile-header">
+            <strong>${esc(b.name)}</strong>
+            <span class="badge online">Active</span>
+          </div>
+          <div class="brew-tile-metrics">
+            <div class="brew-tile-metric">
+              <span class="brew-tile-label">Day</span>
+              <span class="brew-tile-value">${days}</span>
+            </div>
+            <div class="brew-tile-metric">
+              <span class="brew-tile-label">SG</span>
+              <span class="brew-tile-value">${sg != null ? Math.round(sg * 1000) : '--'}</span>
+            </div>
+            <div class="brew-tile-metric">
+              <span class="brew-tile-label">ABV</span>
+              <span class="brew-tile-value">${abv != null ? abv.toFixed(1) + '%' : '--'}</span>
+            </div>
+            <div class="brew-tile-metric">
+              <span class="brew-tile-label">Progress</span>
+              <span class="brew-tile-value">${pct}%</span>
+            </div>
+          </div>
+          <div class="brew-tile-bar"><div class="brew-tile-fill" style="width:${pct}%"></div></div>
+        `;
+        tilesEl.appendChild(tile);
+      });
+    }
+    loadBrewHistory();
+  } catch (e) {}
+}
+
+async function loadBrewHistory() {
+  try {
+    const data = await (await fetch("/api/brew/history")).json();
+    const el = document.getElementById("brew-history-list");
+    const completed = data.filter(b => b.status !== "active");
+    if (!completed.length) { el.innerHTML = "No previous brews."; return; }
+    el.innerHTML = completed.map(b => {
+      const ogStr = b.og ? Math.round(b.og * 1000) : "--";
+      const fgStr = b.fg ? Math.round(b.fg * 1000) : "--";
+      return `<div class="brew-history-item"><strong>${esc(b.name)}</strong> -- ${b.status} (${new Date(b.started_at).toLocaleDateString()}) OG: ${ogStr} FG: ${fgStr}</div>`;
+    }).join("");
+  } catch (e) {}
+}
+
+/* --- +Brew Page --- */
+async function loadNewBrewForm() {
+  try {
     const devices = await (await fetch("/api/devices")).json();
     const tiltSel = document.getElementById("brew-tilt");
     const ctrlSel = document.getElementById("brew-controller");
@@ -612,68 +799,285 @@ async function loadBrewState() {
       if (dev.deviceType === "TILT") tiltSel.appendChild(opt);
       else ctrlSel.appendChild(opt);
     });
-
-    // Check for active brew
-    const brew = await (await fetch("/api/brew")).json();
-    if (brew && brew.status === "active") {
-      document.getElementById("brew-start-panel").style.display = "none";
-      document.getElementById("brew-active-panel").style.display = "block";
-      renderActiveBrew(brew);
-    } else {
-      document.getElementById("brew-start-panel").style.display = "block";
-      document.getElementById("brew-active-panel").style.display = "none";
-      loadBrewHistory();
-    }
   } catch (e) {}
 }
 
-function renderActiveBrew(b) {
-  document.getElementById("brew-active-name").textContent = b.name || "Untitled Brew";
-  document.getElementById("brew-beer-temp").textContent = b.current_sg != null && b.tilt_device_id ? formatTemp(window._cachedDevices?.[b.tilt_device_id]?.temperature, "C") : "—";
-  document.getElementById("brew-fridge-temp").textContent = b.fridge_temp != null ? formatTemp(b.fridge_temp, "C") : "—";
-  document.getElementById("brew-sg").textContent = b.current_sg != null ? Math.round(b.current_sg * 1000) : "—";
-  document.getElementById("brew-abv").textContent = b.current_abv != null ? b.current_abv.toFixed(1) + "%" : "—";
+document.getElementById("btn-start-brew").addEventListener("click", async () => {
+  const ogRaw = document.getElementById("brew-og").value;
+  const data = {
+    name: document.getElementById("brew-name").value || "Untitled Brew",
+    og: ogRaw ? parseFloat(ogRaw) / 1000 : null,
+    target_beer_temp: parseFloat(document.getElementById("brew-target-temp").value) || null,
+    tilt_device_id: document.getElementById("brew-tilt").value || null,
+    controller_device_id: document.getElementById("brew-controller").value || null,
+    notes: document.getElementById("brew-notes").value,
+  };
+  try {
+    const res = await fetch("/api/brews/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    if (res.ok) {
+      const session = await res.json();
+      showToast("Brew started!", "success");
+      // Clear form
+      document.getElementById("brew-name").value = "";
+      document.getElementById("brew-og").value = "";
+      document.getElementById("brew-target-temp").value = "";
+      document.getElementById("brew-notes").value = "";
+      showPage("brew-detail", session.id);
+    } else {
+      const r = await res.json();
+      showToast(r.error || "Failed", "error");
+    }
+  } catch (e) { showToast("Failed to start brew", "error"); }
+});
+
+/* --- Brew Detail --- */
+async function loadBrewDetail(sessionId) {
+  try {
+    const res = await fetch(`/api/brews/${sessionId}`);
+    if (!res.ok) { showToast("Brew not found", "error"); showPage("brews"); return; }
+    const b = await res.json();
+    renderBrewDetail(b);
+  } catch (e) {}
+}
+
+function renderBrewDetail(b) {
+  document.getElementById("brew-detail-name").textContent = b.name || "Untitled Brew";
+
+  const days = daysSince(b.started_at);
+  document.getElementById("brew-detail-duration").textContent = `Day ${Math.floor(days)} (${formatSeconds(days * 86400)})`;
+
+  // Beer temp from live data
+  const beerTemp = b.beer_temp;
+  document.getElementById("brew-beer-temp").textContent = beerTemp != null ? formatTemp(beerTemp, "C") : "--";
+  document.getElementById("brew-fridge-temp").textContent = b.fridge_temp != null ? formatTemp(b.fridge_temp, "C") : "--";
+  document.getElementById("brew-sg").textContent = b.current_sg != null ? Math.round(b.current_sg * 1000) : "--";
+  document.getElementById("brew-abv").textContent = b.current_abv != null ? b.current_abv.toFixed(1) + "%" : "--";
 
   const og = b.og;
-  document.getElementById("brew-og-display").textContent = og != null ? Math.round(og * 1000) : "—";
+  document.getElementById("brew-og-display").textContent = og != null ? Math.round(og * 1000) : "--";
+  document.getElementById("brew-target-display").textContent = b.target_beer_temp != null ? formatTemp(b.target_beer_temp, "C") : "--";
 
-  // Max ABV assumes FG of 1.010
-  const maxAbv = og ? ((og - 1.010) * 131.25).toFixed(1) + "%" : "—";
-  document.getElementById("brew-max-abv").textContent = maxAbv;
-
-  // Gauge
-  if (og && b.current_sg) {
-    const totalDrop = og - 1.010;
-    const currentDrop = og - b.current_sg;
-    const pct = totalDrop > 0 ? Math.min(100, Math.max(0, Math.round((currentDrop / totalDrop) * 100))) : 0;
-    document.getElementById("brew-gauge-fill").style.width = pct + "%";
-    document.getElementById("brew-gauge-pct").textContent = pct + "%";
+  // OG hint: if current SG > OG, suggest updating
+  if (og && b.current_sg && b.current_sg > og) {
+    const hint = document.getElementById("brew-og-hint");
+    hint.style.display = "block";
+    hint.textContent = `SG reading ${Math.round(b.current_sg * 1000)} > OG ${Math.round(og * 1000)} -- update OG?`;
+    hint.style.cursor = "pointer";
+    hint.onclick = () => {
+      const newOg = Math.round(b.current_sg * 1000);
+      if (confirm(`Update OG to ${newOg}?`)) {
+        updateBrewField(b.id, "og", b.current_sg);
+      }
+    };
+  } else {
+    document.getElementById("brew-og-hint").style.display = "none";
   }
+
+  // Needle gauge
+  updateNeedleGauge(b);
 
   // Feedback status
   const fbEnabled = b.temp_feedback_enabled;
   document.getElementById("btn-feedback-start").disabled = fbEnabled;
   document.getElementById("btn-feedback-stop").disabled = !fbEnabled;
-  document.getElementById("feedback-status").textContent = fbEnabled ? "Active — adjusting fridge target" : "Disabled";
+  document.getElementById("feedback-status").textContent = fbEnabled ? "Active -- adjusting fridge target" : "Disabled";
 
-  // Events
-  const evList = document.getElementById("brew-events-list");
-  evList.innerHTML = "";
-  (b.events || []).forEach(ev => {
-    const div = document.createElement("div");
-    div.className = "brew-event";
-    const t = new Date(ev.timestamp * 1000).toLocaleString();
-    div.innerHTML = `<span class="brew-event-time">${t}</span> <strong>${esc(ev.event_type)}</strong> ${esc(ev.description || "")}`;
-    evList.appendChild(div);
-  });
+  // Reminders
+  renderReminders(b.reminders || [], b.id);
 
+  // Events (text-based brew log)
+  renderBrewLog(b.events || [], b.started_at);
+
+  // Load feedback chart (only if not already loaded for this session)
   loadFeedbackChart(b.id);
 }
 
-async function loadFeedbackChart(sessionId) {
-  if (feedbackChart) { feedbackChart.destroy(); feedbackChart = null; }
+function updateNeedleGauge(b) {
+  const og = b.og;
+  const sg = b.current_sg;
+  const estFg = 1.010;
+
+  let pct = 0;
+  if (og && sg) {
+    const totalDrop = og - estFg;
+    const currentDrop = og - sg;
+    pct = totalDrop > 0 ? Math.min(100, Math.max(0, (currentDrop / totalDrop) * 100)) : 0;
+  }
+
+  // Update percentage text
+  document.getElementById("gauge-pct-text").textContent = Math.round(pct) + "%";
+
+  // Needle angle: 0% = -90deg (left), 100% = 90deg (right) -- in SVG coords, 180 to 0
+  const angle = Math.PI - (pct / 100) * Math.PI;
+  const needleLen = 85;
+  const cx = 130, cy = 130;
+  const nx = cx + needleLen * Math.cos(angle);
+  const ny = cy - needleLen * Math.sin(angle);
+  document.getElementById("gauge-needle").setAttribute("x2", nx.toFixed(1));
+  document.getElementById("gauge-needle").setAttribute("y2", ny.toFixed(1));
+
+  // Progress arc
+  const startAngle = Math.PI;
+  const endAngle = Math.PI - (pct / 100) * Math.PI;
+  const r = 100;
+  const x1 = cx + r * Math.cos(startAngle);
+  const y1 = cy - r * Math.sin(startAngle);
+  const x2 = cx + r * Math.cos(endAngle);
+  const y2 = cy - r * Math.sin(endAngle);
+  const largeArc = pct > 50 ? 1 : 0;
+  if (pct > 0.5) {
+    document.getElementById("gauge-arc").setAttribute("d",
+      `M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(1)} ${y2.toFixed(1)}`);
+  } else {
+    document.getElementById("gauge-arc").setAttribute("d", "");
+  }
+}
+
+function renderBrewLog(events, startedAt) {
+  const el = document.getElementById("brew-events-list");
+  if (!events.length) {
+    el.innerHTML = '<div class="brew-log-entry dim">No events yet.</div>';
+    return;
+  }
+  el.innerHTML = events.map(ev => {
+    const dt = new Date(ev.timestamp * 1000);
+    const day = Math.floor((ev.timestamp * 1000 - new Date(startedAt).getTime()) / 86400000);
+    const timeStr = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const dateStr = dt.toLocaleDateString([], { month: "short", day: "numeric" });
+    const typeLabels = {
+      brew_started: "Started",
+      brew_completed: "Completed",
+      brew_cancelled: "Cancelled",
+      dry_hop: "Dry Hop",
+      sample: "Sample",
+      note: "Note",
+      reminder_fired: "Reminder",
+    };
+    const label = typeLabels[ev.event_type] || ev.event_type;
+    return `<div class="brew-log-entry">
+      <span class="brew-log-day">Day ${day}</span>
+      <span class="brew-log-time">${dateStr} ${timeStr}</span>
+      <span class="brew-log-type">${esc(label)}</span>
+      <span class="brew-log-desc">${esc(ev.description || '')}</span>
+    </div>`;
+  }).join("");
+}
+
+function renderReminders(reminders, sessionId) {
+  const el = document.getElementById("reminder-list");
+  if (!reminders.length) {
+    el.innerHTML = '<div class="help-text" style="margin-top:8px">No reminders set.</div>';
+    return;
+  }
+  el.innerHTML = reminders.map(r => {
+    const typeLabel = r.reminder_type === "day" ? `Day ${r.trigger_value}` : `SG stable ${r.trigger_value}d`;
+    const status = r.fired ? '<span class="badge-sm fired">Fired</span>' : '<span class="badge-sm pending">Pending</span>';
+    return `<div class="reminder-item">
+      ${status}
+      <span class="reminder-trigger">${typeLabel}</span>
+      <span class="reminder-msg">${esc(r.message)}</span>
+      <span class="reminder-icon">${esc(r.icon)}</span>
+      ${!r.fired ? `<button class="btn-tiny btn-stop" onclick="deleteReminder('${sessionId}', ${r.id})">x</button>` : ''}
+    </div>`;
+  }).join("");
+}
+
+async function deleteReminder(sessionId, reminderId) {
   try {
-    const data = await (await fetch("/api/brew/feedback/log")).json();
+    await fetch(`/api/brews/${sessionId}/reminder/${reminderId}`, { method: "DELETE" });
+    showToast("Reminder removed", "success");
+    loadBrewDetail(sessionId);
+  } catch (e) { showToast("Failed", "error"); }
+}
+
+// Add reminder button
+document.getElementById("btn-add-reminder").addEventListener("click", async () => {
+  if (!currentBrewId) return;
+  const rType = document.getElementById("reminder-type").value;
+  const rValue = parseFloat(document.getElementById("reminder-value").value);
+  const rMsg = document.getElementById("reminder-message").value;
+  const rIcon = document.getElementById("reminder-icon").value;
+  if (!rValue || !rMsg) { showToast("Fill in day/value and message", "error"); return; }
+  try {
+    const res = await fetch(`/api/brews/${currentBrewId}/reminder`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reminder_type: rType, trigger_value: rValue, message: rMsg, icon: rIcon }),
+    });
+    if (res.ok) {
+      showToast("Reminder added", "success");
+      document.getElementById("reminder-message").value = "";
+      document.getElementById("reminder-value").value = "";
+      loadBrewDetail(currentBrewId);
+    } else showToast("Failed", "error");
+  } catch (e) { showToast("Failed", "error"); }
+});
+
+/* Edit OG and Target Temp inline */
+function editBrewOG() {
+  if (!currentBrewId) return;
+  const newOg = prompt("Enter new OG (e.g. 1050):");
+  if (!newOg) return;
+  const ogFloat = parseFloat(newOg) / 1000;
+  updateBrewField(currentBrewId, "og", ogFloat);
+}
+
+function editBrewTargetTemp() {
+  if (!currentBrewId) return;
+  const newTemp = prompt("Enter new target beer temp (\u00b0C):");
+  if (!newTemp) return;
+  updateBrewField(currentBrewId, "target_beer_temp", parseFloat(newTemp));
+}
+
+async function updateBrewField(sessionId, field, value) {
+  try {
+    const res = await fetch(`/api/brews/${sessionId}/update`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    });
+    if (res.ok) { showToast("Updated", "success"); loadBrewDetail(sessionId); }
+    else showToast("Failed to update", "error");
+  } catch (e) { showToast("Failed", "error"); }
+}
+
+/* Brew chart (persistent per session) */
+document.getElementById("btn-brew-add-series").addEventListener("click", async () => {
+  if (!currentBrewId) return;
+  const metric = document.getElementById("brew-chart-metric").value;
+  const range = document.getElementById("brew-chart-range").value;
+
+  // Get the TILT device for this brew
+  try {
+    const b = await (await fetch(`/api/brews/${currentBrewId}`)).json();
+    const deviceId = metric === "temperature" ? (b.tilt_device_id || b.controller_device_id) : b.tilt_device_id;
+    if (!deviceId) { showToast("No device assigned for this metric", "error"); return; }
+
+    if (!brewChartSeries[currentBrewId]) brewChartSeries[currentBrewId] = [];
+    const existing = brewCharts[currentBrewId];
+    brewCharts[currentBrewId] = await addChartSeries(
+      existing || null, brewChartSeries[currentBrewId], "brew-chart",
+      deviceId, metric, range, "left"
+    );
+  } catch (e) { showToast("Failed", "error"); }
+});
+
+document.getElementById("btn-brew-clear-chart").addEventListener("click", () => {
+  if (currentBrewId && brewCharts[currentBrewId]) {
+    brewCharts[currentBrewId].destroy();
+    delete brewCharts[currentBrewId];
+    delete brewChartSeries[currentBrewId];
+  }
+});
+
+/* Feedback chart */
+let lastFeedbackSession = null;
+
+async function loadFeedbackChart(sessionId) {
+  // Only recreate if session changed
+  if (lastFeedbackSession === sessionId && feedbackChart) return;
+  if (feedbackChart) { feedbackChart.destroy(); feedbackChart = null; }
+  lastFeedbackSession = sessionId;
+  try {
+    const data = await (await fetch(`/api/brews/${sessionId}/feedback/log`)).json();
     if (!data.length) return;
     const ctx = document.getElementById("feedback-chart").getContext("2d");
     feedbackChart = new Chart(ctx, {
@@ -702,83 +1106,70 @@ async function loadFeedbackChart(sessionId) {
   } catch (e) {}
 }
 
-document.getElementById("btn-start-brew").addEventListener("click", async () => {
-  const ogRaw = document.getElementById("brew-og").value;
-  const data = {
-    name: document.getElementById("brew-name").value || "Untitled Brew",
-    og: ogRaw ? parseFloat(ogRaw) / 1000 : null,
-    target_beer_temp: parseFloat(document.getElementById("brew-target-temp").value) || null,
-    tilt_device_id: document.getElementById("brew-tilt").value || null,
-    controller_device_id: document.getElementById("brew-controller").value || null,
-    notes: document.getElementById("brew-notes").value,
-  };
-  try {
-    const res = await fetch("/api/brew/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-    if (res.ok) { showToast("Brew started!", "success"); loadBrewState(); }
-    else { const r = await res.json(); showToast(r.error || "Failed", "error"); }
-  } catch (e) { showToast("Failed to start brew", "error"); }
-});
-
+/* Brew action buttons */
 document.getElementById("btn-complete-brew").addEventListener("click", async () => {
+  if (!currentBrewId) return;
+  const fgRaw = prompt("Enter Final Gravity (e.g. 1010) or leave blank:");
+  const data = {};
+  if (fgRaw) data.fg = parseFloat(fgRaw) / 1000;
   try {
-    await fetch("/api/brew/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    await fetch(`/api/brews/${currentBrewId}/complete`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
+    });
     showToast("Brew completed!", "success");
-    loadBrewState();
+    showPage("brews");
   } catch (e) { showToast("Failed", "error"); }
 });
 
 document.getElementById("btn-cancel-brew").addEventListener("click", async () => {
+  if (!currentBrewId) return;
   if (!confirm("Cancel this brew session?")) return;
   try {
-    await fetch("/api/brew/cancel", { method: "POST" });
+    await fetch(`/api/brews/${currentBrewId}/cancel`, { method: "POST" });
     showToast("Brew cancelled", "success");
-    loadBrewState();
+    showPage("brews");
   } catch (e) { showToast("Failed", "error"); }
 });
 
 document.getElementById("btn-feedback-start").addEventListener("click", async () => {
+  if (!currentBrewId) return;
   try {
-    await fetch("/api/brew/feedback/start", { method: "POST" });
+    await fetch(`/api/brews/${currentBrewId}/feedback/start`, { method: "POST" });
     showToast("Smart feedback enabled", "success");
-    loadBrewState();
+    loadBrewDetail(currentBrewId);
   } catch (e) { showToast("Failed", "error"); }
 });
 
 document.getElementById("btn-feedback-stop").addEventListener("click", async () => {
+  if (!currentBrewId) return;
   try {
-    await fetch("/api/brew/feedback/stop", { method: "POST" });
+    await fetch(`/api/brews/${currentBrewId}/feedback/stop`, { method: "POST" });
     showToast("Smart feedback disabled", "success");
-    loadBrewState();
+    loadBrewDetail(currentBrewId);
   } catch (e) { showToast("Failed", "error"); }
 });
 
 document.querySelectorAll(".brew-event-btn").forEach(btn => {
   btn.addEventListener("click", async () => {
+    if (!currentBrewId) return;
     const eventType = btn.dataset.event;
     let desc = "";
     if (eventType === "note") {
       desc = prompt("Enter note:");
       if (!desc) return;
+    } else if (eventType === "dry_hop") {
+      desc = prompt("Hop addition details (optional):") || "Dry hopped";
+    } else if (eventType === "sample") {
+      desc = prompt("Sample notes (optional):") || "Took sample";
     }
     try {
-      await fetch("/api/brew/event", { method: "POST", headers: { "Content-Type": "application/json" },
+      await fetch(`/api/brews/${currentBrewId}/event`, { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ event_type: eventType, description: desc }) });
       showToast("Event logged", "success");
-      loadBrewState();
+      loadBrewDetail(currentBrewId);
     } catch (e) { showToast("Failed", "error"); }
   });
 });
-
-async function loadBrewHistory() {
-  try {
-    const data = await (await fetch("/api/brew/history")).json();
-    const el = document.getElementById("brew-history-list");
-    if (!data.length) { el.innerHTML = "No previous brews."; return; }
-    el.innerHTML = data.map(b =>
-      `<div class="brew-history-item"><strong>${esc(b.name)}</strong> — ${b.status} (${new Date(b.started_at).toLocaleDateString()})</div>`
-    ).join("");
-  } catch (e) {}
-}
 
 /* --- SSE Console --- */
 function initConsole() {
@@ -803,14 +1194,11 @@ checkStatus();
 initConsole();
 loadDevices();
 
-// Cache devices for cross-page use
-setInterval(async () => {
-  try { window._cachedDevices = await (await fetch("/api/devices")).json(); } catch (e) {}
-}, 5000);
-
+// Periodic refreshes
 setInterval(checkStatus, 5000);
 setInterval(loadDevices, 10000);
 setInterval(() => {
   if (currentPage === "dashboard") updateDashboardCards();
-  if (currentPage === "brew") loadBrewState();
+  if (currentPage === "brew-detail" && currentBrewId) loadBrewDetail(currentBrewId);
+  if (currentPage === "brews") loadBrewsPage();
 }, 10000);
