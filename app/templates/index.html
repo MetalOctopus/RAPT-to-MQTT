@@ -234,6 +234,51 @@
         </div>
       </div>
 
+      <!-- Device Configuration -->
+      <div class="panel" id="brew-device-config">
+        <h2>Devices &amp; Configuration <button class="inline-edit-btn" id="btn-toggle-device-config">change</button></h2>
+        <div class="device-grid" id="brew-device-summary">
+          <div class="device-card">
+            <div class="card-label">Hydrometer</div>
+            <div class="card-value" id="brew-cfg-tilt">--</div>
+          </div>
+          <div class="device-card">
+            <div class="card-label">Controller</div>
+            <div class="card-value" id="brew-cfg-ctrl">--</div>
+          </div>
+          <div class="device-card">
+            <div class="card-label">Temp Source</div>
+            <div class="card-value" id="brew-cfg-source">--</div>
+          </div>
+          <div class="device-card">
+            <div class="card-label">Beer Target <button class="inline-edit-btn" onclick="editBrewTargetTemp()">edit</button></div>
+            <div class="card-value" id="brew-target-display">--</div>
+          </div>
+        </div>
+        <div id="brew-device-edit" style="display:none;margin-top:12px">
+          <p class="help-text" style="margin:0 0 8px 0">Change devices mid-brew without starting over. Picks up on the next feedback cycle.</p>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="brew-edit-tilt">Hydrometer (in-liquid temp + SG)</label>
+              <select id="brew-edit-tilt"></select>
+            </div>
+            <div class="form-group">
+              <label for="brew-edit-ctrl">Temperature Controller</label>
+              <select id="brew-edit-ctrl"></select>
+            </div>
+            <div class="form-group">
+              <label for="brew-edit-source">Feedback Temp Source</label>
+              <select id="brew-edit-source">
+                <option value="hydrometer">Hydrometer (in-liquid)</option>
+                <option value="controller">Controller (fridge air)</option>
+                <option value="mean">Mean of both</option>
+              </select>
+            </div>
+            <button class="btn-save" id="btn-save-device-config" style="align-self:flex-end">Save</button>
+          </div>
+        </div>
+      </div>
+
       <div class="device-grid">
         <div class="device-card primary">
           <div class="card-label">Beer Temp</div>
@@ -257,16 +302,8 @@
           <div id="brew-og-hint" class="card-hint" style="display:none"></div>
         </div>
         <div class="device-card">
-          <div class="card-label">Beer Target <button class="inline-edit-btn" onclick="editBrewTargetTemp()">edit</button></div>
-          <div class="card-value" id="brew-target-display">--</div>
-        </div>
-        <div class="device-card">
           <div class="card-label">Fridge Target</div>
           <div class="card-value" id="brew-fridge-target">--</div>
-        </div>
-        <div class="device-card">
-          <div class="card-label">Temp Source <button class="inline-edit-btn" onclick="editBrewTempSource()">edit</button></div>
-          <div class="card-value" id="brew-temp-source-display">--</div>
         </div>
       </div>
 
@@ -315,11 +352,14 @@
             </select>
           </div>
           <button id="btn-brew-add-series" class="btn-save" style="align-self:flex-end">Add Series</button>
-          <button id="btn-brew-filter" class="btn-save" style="align-self:flex-end">Filter: OFF</button>
           <button id="btn-brew-clear-chart" class="btn-stop" style="align-self:flex-end">Clear</button>
         </div>
         <div class="chart-container">
           <canvas id="brew-chart"></canvas>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+          <button id="btn-brew-filter" class="btn-save btn-sm">Filter: ON</button>
+          <span class="help-text" style="line-height:1.4">Removes physically impossible spikes (e.g. a -20°C TILT reading or a 50-point SG jump). Filters any change faster than 2°C/min for temperature or 20 SG points/min. Turn off to see raw unfiltered data.</span>
         </div>
       </div>
 
@@ -442,11 +482,19 @@
             <div class="chart-container">
               <canvas id="tilt-temp-chart"></canvas>
             </div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+              <button id="btn-tilt-temp-filter" class="btn-save btn-sm" onclick="toggleDeviceFilter('tilt-temp')">Filter: ON</button>
+              <span class="help-text">Removes impossible spikes (&gt;2°C/min). Turn off for raw data.</span>
+            </div>
           </div>
           <div class="panel">
             <h2>Specific Gravity (24h)</h2>
             <div class="chart-container">
               <canvas id="tilt-sg-chart"></canvas>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+              <button id="btn-tilt-sg-filter" class="btn-save btn-sm" onclick="toggleDeviceFilter('tilt-sg')">Filter: ON</button>
+              <span class="help-text">Removes impossible spikes (&gt;20 SG points/min). Turn off for raw data.</span>
             </div>
           </div>
         </div>

@@ -391,7 +391,11 @@ function renderDevice(dev) {
 }
 
 /* --- TILT Default Charts --- */
+let deviceFilterEnabled = { "tilt-temp": true, "tilt-sg": true };
+let currentTiltDeviceId = null;
+
 async function loadTiltDefaultCharts(deviceId) {
+  currentTiltDeviceId = deviceId;
   try {
     const start = (Date.now() / 1000) - 86400;
 
@@ -399,15 +403,17 @@ async function loadTiltDefaultCharts(deviceId) {
     const tempData = await (await fetch(`/api/history/${deviceId}/temperature?start=${start}&limit=10000`)).json();
     if (tiltTempChart) { tiltTempChart.destroy(); tiltTempChart = null; }
     if (tempData.length) {
+      let pts = tempData.map(d => ({ x: d.timestamp * 1000, y: d.value }));
+      if (deviceFilterEnabled["tilt-temp"]) pts = filterOutliers(pts, 2.0);
       const ctx = document.getElementById("tilt-temp-chart").getContext("2d");
       const grad = ctx.createLinearGradient(0, 0, 0, 300);
-      grad.addColorStop(0, "rgba(218, 54, 51, 0.6)");   // hot red at top (30C)
-      grad.addColorStop(1, "rgba(88, 166, 255, 0.6)");   // cold blue at bottom (4C)
+      grad.addColorStop(0, "rgba(218, 54, 51, 0.6)");
+      grad.addColorStop(1, "rgba(88, 166, 255, 0.6)");
       tiltTempChart = new Chart(ctx, {
         type: "line",
         data: { datasets: [{
           label: "Temperature (\u00b0C)",
-          data: tempData.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+          data: pts,
           borderColor: "#f0883e",
           backgroundColor: grad,
           fill: true, borderWidth: 2, pointRadius: 0, tension: 0.3,
@@ -428,12 +434,14 @@ async function loadTiltDefaultCharts(deviceId) {
     const sgData = await (await fetch(`/api/history/${deviceId}/specificGravity?start=${start}&limit=10000`)).json();
     if (tiltSgChart) { tiltSgChart.destroy(); tiltSgChart = null; }
     if (sgData.length) {
+      let pts = sgData.map(d => ({ x: d.timestamp * 1000, y: d.value }));
+      if (deviceFilterEnabled["tilt-sg"]) pts = filterOutliers(pts, 20);
       const ctx2 = document.getElementById("tilt-sg-chart").getContext("2d");
       tiltSgChart = new Chart(ctx2, {
         type: "line",
         data: { datasets: [{
           label: "Specific Gravity",
-          data: sgData.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+          data: pts,
           borderColor: "#c9d1d9",
           backgroundColor: "rgba(201, 209, 217, 0.1)",
           fill: true, borderWidth: 2, pointRadius: 0, tension: 0.3,
@@ -449,7 +457,17 @@ async function loadTiltDefaultCharts(deviceId) {
         },
       });
     }
+
+    // Update filter button labels
+    document.getElementById("btn-tilt-temp-filter").textContent = deviceFilterEnabled["tilt-temp"] ? "Filter: ON" : "Filter: OFF";
+    document.getElementById("btn-tilt-sg-filter").textContent = deviceFilterEnabled["tilt-sg"] ? "Filter: ON" : "Filter: OFF";
   } catch (e) {}
+}
+
+function toggleDeviceFilter(chartKey) {
+  deviceFilterEnabled[chartKey] = !deviceFilterEnabled[chartKey];
+  document.getElementById(`btn-${chartKey}-filter`).textContent = deviceFilterEnabled[chartKey] ? "Filter: ON" : "Filter: OFF";
+  if (currentTiltDeviceId) loadTiltDefaultCharts(currentTiltDeviceId);
 }
 
 /* --- Dashboard --- */
@@ -869,8 +887,9 @@ async function loadBrewDetail(sessionId) {
     if (!res.ok) { showToast("Brew not found", "error"); showPage("brews"); return; }
     const b = await res.json();
     renderBrewDetail(b);
+    // Default filter ON for new sessions
+    if (brewFilterEnabled[sessionId] === undefined) brewFilterEnabled[sessionId] = true;
     autoPopulateBrewChart(b);
-    // Restore filter button state
     const filterBtn = document.getElementById("btn-brew-filter");
     if (filterBtn) filterBtn.textContent = brewFilterEnabled[sessionId] ? "Filter: ON" : "Filter: OFF";
   } catch (e) {}
@@ -894,9 +913,11 @@ function renderBrewDetail(b) {
   document.getElementById("brew-target-display").textContent = b.target_beer_temp != null ? formatTemp(b.target_beer_temp, "C") : "--";
   document.getElementById("brew-fridge-target").textContent = b.controller_target != null ? formatTemp(b.controller_target, "C") : "--";
 
-  // Temp source display
-  const sourceLabels = { hydrometer: "Hydrometer", controller: "Controller", mean: "Mean" };
-  document.getElementById("brew-temp-source-display").textContent = sourceLabels[b.temp_source] || "Hydrometer";
+  // Device config summary
+  const sourceLabels = { hydrometer: "Hydrometer (in-liquid)", controller: "Controller (fridge air)", mean: "Mean of both" };
+  document.getElementById("brew-cfg-tilt").textContent = b.tilt_name || "None";
+  document.getElementById("brew-cfg-ctrl").textContent = b.controller_name || "None";
+  document.getElementById("brew-cfg-source").textContent = sourceLabels[b.temp_source] || "Hydrometer (in-liquid)";
 
   // ABV under gauge
   const abvText = b.current_abv != null ? b.current_abv.toFixed(1) + "% ABV" : "-- ABV";
@@ -1090,10 +1111,47 @@ function renderFeedbackStatus(b) {
     sensorDesc = `${tiltName} (in the liquid)`;
   }
 
+  const beerTemp = b.beer_temp;
+  const fridgeTemp = b.fridge_temp;
+  const ctrlTarget = b.controller_target;
+
   if (!fbEnabled) {
-    explEl.textContent = `When enabled, this will read the actual beer temperature from ${sensorDesc} and automatically adjust ${ctrlName}'s target temperature via the RAPT API so that your beer reaches ${targetLabel}. The fridge air hits target quickly, but the liquid has far more thermal mass \u2014 this closes that gap.`;
+    // Situational explanation showing current readings
+    let situation = "";
+    if (ctrlTarget != null && fridgeTemp != null) {
+      situation = `Right now, ${ctrlName} is set to ${parseFloat(ctrlTarget).toFixed(1)}\u00b0C and the fridge air reads ${parseFloat(fridgeTemp).toFixed(1)}\u00b0C. `;
+    }
+    if (beerTemp != null && targetBeer != null) {
+      const delta = (beerTemp - targetBeer).toFixed(1);
+      const absDelta = Math.abs(delta);
+      if (absDelta > deadband) {
+        situation += `However, ${sensorDesc} reads the actual liquid at ${parseFloat(beerTemp).toFixed(1)}\u00b0C \u2014 that's ${absDelta}\u00b0C ${delta > 0 ? "above" : "below"} your beer target of ${targetLabel}. `;
+        situation += `The fridge air hits target quickly, but the liquid has far more thermal mass. `;
+        situation += `Enable this to automatically ${delta > 0 ? "lower" : "raise"} ${ctrlName}'s target via the RAPT API until the liquid reaches ${targetLabel}.`;
+      } else {
+        situation += `${sensorDesc} reads ${parseFloat(beerTemp).toFixed(1)}\u00b0C \u2014 within ${deadband}\u00b0C of your ${targetLabel} target. Looking good, but enable this to keep it there automatically.`;
+      }
+    } else if (targetBeer != null) {
+      situation += `Enable this to automatically adjust ${ctrlName}'s target via the RAPT API so that ${sensorDesc} converges on your beer target of ${targetLabel}.`;
+    } else {
+      situation += `Set a beer target temperature above, then enable this to automatically adjust ${ctrlName} to match.`;
+    }
+    explEl.textContent = situation;
   } else {
-    explEl.textContent = `Active \u2014 reading beer temperature from ${sensorDesc} and adjusting ${ctrlName}'s target via the RAPT API every ${intervalMin} minutes to hold your beer at ${targetLabel}. Your RAPT Portal settings stay in sync.`;
+    // Active state — what it's doing right now
+    let activeDesc = `Enabled \u2014 checking ${sensorDesc} every ${intervalMin} minutes and adjusting ${ctrlName}'s target via the RAPT API to hold your beer at ${targetLabel}. `;
+    if (beerTemp != null && targetBeer != null) {
+      const err = beerTemp - targetBeer;
+      const absErr = Math.abs(err);
+      if (absErr <= deadband) {
+        activeDesc += `Currently on target (${parseFloat(beerTemp).toFixed(1)}\u00b0C). No correction needed.`;
+      } else if (err > 0) {
+        activeDesc += `Beer is ${absErr.toFixed(1)}\u00b0C too warm (${parseFloat(beerTemp).toFixed(1)}\u00b0C). Controller target has been lowered to compensate.`;
+      } else {
+        activeDesc += `Beer is ${absErr.toFixed(1)}\u00b0C too cold (${parseFloat(beerTemp).toFixed(1)}\u00b0C). Controller target has been raised to compensate.`;
+      }
+    }
+    explEl.textContent = activeDesc;
   }
 
   // Live status panel — only visible when enabled
@@ -1105,8 +1163,6 @@ function renderFeedbackStatus(b) {
   livePanel.style.display = "block";
 
   // Current state
-  const beerTemp = b.beer_temp;
-  const fridgeTemp = b.fridge_temp;
   const cooling = b.cooling_active;
   const heating = b.heating_active;
   const mode = cooling ? "Cooling" : (heating ? "Heating" : "Idle");
@@ -1305,11 +1361,61 @@ function editBrewTargetTemp() {
 }
 
 function editBrewTempSource() {
-  if (!currentBrewId) return;
-  const choice = prompt("Temperature source for feedback loop:\n1 = Hydrometer (in-liquid)\n2 = Controller (fridge air)\n3 = Mean of both\n\nEnter 1, 2, or 3:");
-  const map = { "1": "hydrometer", "2": "controller", "3": "mean" };
-  if (map[choice]) updateBrewField(currentBrewId, "temp_source", map[choice]);
+  // Legacy — now handled by device config panel
+  document.getElementById("brew-device-edit").style.display = "block";
 }
+
+// Device config toggle
+document.getElementById("btn-toggle-device-config").addEventListener("click", async () => {
+  const editPanel = document.getElementById("brew-device-edit");
+  const showing = editPanel.style.display !== "none";
+  if (showing) {
+    editPanel.style.display = "none";
+    return;
+  }
+  editPanel.style.display = "block";
+  // Populate selects with current devices
+  try {
+    const devices = await (await fetch("/api/devices")).json();
+    const brew = await (await fetch(`/api/brews/${currentBrewId}`)).json();
+    const tiltSel = document.getElementById("brew-edit-tilt");
+    const ctrlSel = document.getElementById("brew-edit-ctrl");
+    const srcSel = document.getElementById("brew-edit-source");
+    tiltSel.innerHTML = '<option value="">None</option>';
+    ctrlSel.innerHTML = '<option value="">None</option>';
+    Object.keys(devices).forEach(id => {
+      const dev = devices[id];
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = dev.name || id.substring(0, 8);
+      if (dev.deviceType === "TILT") tiltSel.appendChild(opt);
+      else ctrlSel.appendChild(opt);
+    });
+    if (brew.tilt_device_id) tiltSel.value = brew.tilt_device_id;
+    if (brew.controller_device_id) ctrlSel.value = brew.controller_device_id;
+    srcSel.value = brew.temp_source || "hydrometer";
+  } catch (e) {}
+});
+
+document.getElementById("btn-save-device-config").addEventListener("click", async () => {
+  if (!currentBrewId) return;
+  const updates = {
+    tilt_device_id: document.getElementById("brew-edit-tilt").value || null,
+    controller_device_id: document.getElementById("brew-edit-ctrl").value || null,
+    temp_source: document.getElementById("brew-edit-source").value,
+  };
+  try {
+    const res = await fetch(`/api/brews/${currentBrewId}/update`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    if (res.ok) {
+      showToast("Devices updated", "success");
+      document.getElementById("brew-device-edit").style.display = "none";
+      loadBrewDetail(currentBrewId);
+    } else showToast("Failed to update", "error");
+  } catch (e) { showToast("Failed", "error"); }
+});
 
 async function updateBrewField(sessionId, field, value) {
   try {
@@ -1418,23 +1524,22 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
   let hasMode = false;
   if (results.mode?.length) {
     hasMode = true;
+    // Build per-point background colors for the fill
+    const modePoints = results.mode.map(d => ({ x: d.timestamp * 1000, y: d.value }));
+    const modeBg = results.mode.map(d => {
+      if (d.value < 0) return "rgba(88,166,255,0.15)";
+      if (d.value > 0) return "rgba(240,136,62,0.15)";
+      return "rgba(0,0,0,0)";
+    });
     datasets.push({
       label: "Mode",
-      data: results.mode.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+      data: modePoints,
       borderWidth: 0,
       pointRadius: 0,
       fill: true,
       stepped: true,
       yAxisID: "yMode",
-      backgroundColor: "rgba(100,100,100,0.08)",
-      segment: {
-        backgroundColor: ctx => {
-          const v = ctx.p1.parsed.y;
-          if (v < 0) return "rgba(88,166,255,0.18)";
-          if (v > 0) return "rgba(240,136,62,0.18)";
-          return "rgba(100,100,100,0.08)";
-        },
-      },
+      backgroundColor: modeBg,
     });
   }
 

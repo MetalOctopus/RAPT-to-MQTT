@@ -264,6 +264,23 @@ button:disabled {
   gap: 12px;
 }
 
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.form-row .form-group {
+  min-width: 160px;
+  flex: 1;
+}
+
+.btn-sm {
+  font-size: 0.85em;
+  padding: 4px 12px;
+}
+
 .controls span {
   font-size: 0.85em;
   color: #8b949e;
