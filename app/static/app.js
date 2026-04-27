@@ -1154,6 +1154,19 @@ function renderFeedbackStatus(b) {
     explEl.textContent = activeDesc;
   }
 
+  // Populate "how it works" dynamic values (always, even when disabled)
+  const gain = b.temp_feedback_gain || 1.5;
+  const tempMin = b.temp_feedback_min != null ? b.temp_feedback_min : 0;
+  const tempMax = b.temp_feedback_max != null ? b.temp_feedback_max : 35;
+  const setIfExists = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setIfExists("how-interval", intervalMin);
+  setIfExists("how-interval2", intervalMin);
+  setIfExists("how-gain", gain);
+  setIfExists("how-gain2", gain);
+  setIfExists("how-deadband", deadband);
+  setIfExists("how-min", tempMin);
+  setIfExists("how-max", tempMax);
+
   // Live status panel — only visible when enabled
   const livePanel = document.getElementById("feedback-live-status");
   if (!fbEnabled) {
@@ -1258,6 +1271,7 @@ function renderFeedbackStatus(b) {
   } else {
     hwEl.textContent = `Feedback loop checks every ${intervalMin} min, adjusts only if delta exceeds ${deadband}\u00b0C deadband.`;
   }
+
 }
 
 function renderBrewLog(events, startedAt) {
