@@ -8,19 +8,20 @@
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
 </head>
 <body>
   <nav class="sidebar">
     <div class="sidebar-header">
-      <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
-        <rect x="3" y="11" width="12" height="12" rx="1.5" fill="#e6a817"/>
-        <ellipse cx="5" cy="11.2" rx="2.2" ry="1.6" fill="#fff"/>
-        <ellipse cx="9" cy="10.5" rx="2.8" ry="2" fill="#fff"/>
-        <ellipse cx="13" cy="11.2" rx="2.2" ry="1.6" fill="#fff"/>
-        <path d="M15 14h2a2 2 0 0 1 2 2v1.5a2 2 0 0 1-2 2h-2" fill="none" stroke="#e6a817" stroke-width="2" stroke-linecap="round"/>
-        <circle cx="9" cy="5" r="1" fill="#58a6ff"/>
-        <path d="M6.2 6.8a4 4 0 0 1 5.6 0" fill="none" stroke="#58a6ff" stroke-width="1.2" stroke-linecap="round"/>
-        <path d="M4 5a7 7 0 0 1 10 0" fill="none" stroke="#58a6ff" stroke-width="1.2" stroke-linecap="round"/>
+      <svg viewBox="0 0 24 22" fill="currentColor" xmlns="http://www.w3.org/2000/svg" width="28" height="26">
+        <rect x="3" y="9" width="12" height="12" rx="1.5" fill="#e6a817"/>
+        <ellipse cx="5" cy="9.2" rx="2.2" ry="1.6" fill="#fff" stroke="#8b949e" stroke-width="0.4"/>
+        <ellipse cx="9" cy="8.5" rx="2.8" ry="2" fill="#fff" stroke="#8b949e" stroke-width="0.4"/>
+        <ellipse cx="13" cy="9.2" rx="2.2" ry="1.6" fill="#fff" stroke="#8b949e" stroke-width="0.4"/>
+        <path d="M15 12h2a2 2 0 0 1 2 2v1.5a2 2 0 0 1-2 2h-2" fill="none" stroke="#8b949e" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="9" cy="3" r="1" fill="#58a6ff"/>
+        <path d="M6.2 4.8a4 4 0 0 1 5.6 0" fill="none" stroke="#58a6ff" stroke-width="1.2" stroke-linecap="round"/>
+        <path d="M4 3a7 7 0 0 1 10 0" fill="none" stroke="#58a6ff" stroke-width="1.2" stroke-linecap="round"/>
       </svg>
       <span class="sidebar-title">RAPT2MQTT</span>
       <span id="status-dot" class="status-dot stopped"></span>
@@ -32,6 +33,9 @@
       <a class="nav-item" data-page="dashboard" href="#">Dashboard</a>
       <a class="nav-item" data-page="brews" href="#">Brews</a>
       <a class="nav-item nav-newbrew" data-page="newbrew" href="#">+Brew</a>
+      <a class="nav-item" data-page="about" href="#">About</a>
+      <a class="nav-item" data-page="integrations" href="#">Integrations</a>
+      <a class="nav-item" data-page="support" href="#">Support</a>
       <a class="nav-item" data-page="help" href="#">Help</a>
     </div>
 
@@ -84,6 +88,10 @@
           <div class="form-group checkbox-group">
             <input type="checkbox" id="auto_start" checked>
             <label for="auto_start">Auto-start on container launch</label>
+          </div>
+          <div class="form-group checkbox-group">
+            <input type="checkbox" id="hide_affiliate_links">
+            <label for="hide_affiliate_links">Hide product links (I already have my gear)</label>
           </div>
         </div>
         <div class="btn-row">
@@ -190,12 +198,20 @@
             <input type="number" id="brew-target-temp" placeholder="18.0" step="0.5">
           </div>
           <div class="form-group">
-            <label for="brew-tilt">Hydrometer</label>
+            <label for="brew-tilt">Temperature Sensor <a href="#" onclick="showPage('integrations');return false" class="affiliate-hint">don't have one?</a></label>
             <select id="brew-tilt"><option value="">None</option></select>
           </div>
           <div class="form-group">
-            <label for="brew-controller">Temperature Controller</label>
+            <label for="brew-controller">Temperature Controller <a href="#" onclick="showPage('integrations');return false" class="affiliate-hint">don't have one?</a></label>
             <select id="brew-controller"><option value="">None</option></select>
+          </div>
+          <div class="form-group">
+            <label for="brew-temp-source">Feedback Temp Source</label>
+            <select id="brew-temp-source">
+              <option value="hydrometer">Hydrometer (in-liquid)</option>
+              <option value="controller">Controller (fridge air)</option>
+              <option value="mean">Mean of both</option>
+            </select>
           </div>
           <div class="form-group full-width">
             <label for="brew-notes">Notes</label>
@@ -248,40 +264,17 @@
           <div class="card-label">Fridge Target</div>
           <div class="card-value" id="brew-fridge-target">--</div>
         </div>
+        <div class="device-card">
+          <div class="card-label">Temp Source <button class="inline-edit-btn" onclick="editBrewTempSource()">edit</button></div>
+          <div class="card-value" id="brew-temp-source-display">--</div>
+        </div>
       </div>
 
-      <!-- Needle Gauge -->
+      <!-- Fermentation Gauge -->
       <div class="panel">
         <h2>Fermentation Progress</h2>
         <div class="gauge-needle-container">
-          <svg id="brew-gauge-svg" viewBox="0 0 260 150" class="needle-gauge">
-            <defs>
-              <linearGradient id="gauge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#f0883e"/>
-                <stop offset="60%" stop-color="#d29922"/>
-                <stop offset="100%" stop-color="#2ea043"/>
-              </linearGradient>
-            </defs>
-            <!-- Background arc -->
-            <path d="M 30 130 A 100 100 0 0 1 230 130" stroke="#21262d" stroke-width="16" fill="none" stroke-linecap="round"/>
-            <!-- Progress arc (drawn dynamically) -->
-            <path id="gauge-arc" d="" stroke="url(#gauge-grad)" stroke-width="16" fill="none" stroke-linecap="round"/>
-            <!-- Tick marks -->
-            <line x1="30" y1="130" x2="38" y2="126" stroke="#484f58" stroke-width="1"/>
-            <line x1="80" y1="43" x2="85" y2="50" stroke="#484f58" stroke-width="1"/>
-            <line x1="130" y1="30" x2="130" y2="38" stroke="#484f58" stroke-width="1"/>
-            <line x1="180" y1="43" x2="175" y2="50" stroke="#484f58" stroke-width="1"/>
-            <line x1="230" y1="130" x2="222" y2="126" stroke="#484f58" stroke-width="1"/>
-            <!-- Needle -->
-            <line id="gauge-needle" x1="130" y1="130" x2="130" y2="40" stroke="#e6edf3" stroke-width="2.5" stroke-linecap="round"/>
-            <!-- Center hub -->
-            <circle cx="130" cy="130" r="6" fill="#30363d" stroke="#58a6ff" stroke-width="2"/>
-            <!-- Percentage -->
-            <text id="gauge-pct-text" x="130" y="115" text-anchor="middle" fill="#e6edf3" font-size="28" font-weight="bold">0%</text>
-            <!-- Labels -->
-            <text x="20" y="148" text-anchor="start" fill="#8b949e" font-size="11">OG</text>
-            <text x="240" y="148" text-anchor="end" fill="#8b949e" font-size="11">FG</text>
-          </svg>
+          <canvas id="brew-gauge-canvas"></canvas>
           <div class="gauge-abv" id="gauge-abv-display">-- ABV</div>
         </div>
       </div>
@@ -306,6 +299,7 @@
             </select>
           </div>
           <button id="btn-brew-add-series" class="btn-save" style="align-self:flex-end">Add Series</button>
+          <button id="btn-brew-filter" class="btn-save" style="align-self:flex-end">Filter: OFF</button>
           <button id="btn-brew-clear-chart" class="btn-stop" style="align-self:flex-end">Clear</button>
         </div>
         <div class="chart-container">
@@ -545,6 +539,258 @@
             <button id="btn-set-pid" class="btn-save">Set PID Values</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- About Page -->
+    <div id="page-about" class="page">
+      <div class="panel">
+        <h2>About RAPT2MQTT</h2>
+        <p>RAPT2MQTT is an open-source bridge between <strong>Kegland RAPT</strong> brewing devices and <strong>MQTT</strong>, built for homebrewers who want real control over their fermentation.</p>
+        <p>This project was born from frustration with cloud-only brewery management. Your data should live on <em>your</em> network, in <em>your</em> Home Assistant, under <em>your</em> control.</p>
+      </div>
+
+      <div class="panel">
+        <h2>What You Get -- Free</h2>
+        <div class="about-features">
+          <div class="about-feature">
+            <strong>RAPT Temperature Controller</strong>
+            <p>Full cloud API integration -- monitor temperature, target, mode (heating/cooling/idle), PID tuning, all from your own dashboard.</p>
+          </div>
+          <div class="about-feature">
+            <strong>Multi-TILT Hydrometer Support</strong>
+            <p>Live specific gravity and beer temperature from TILT hydrometers via MQTT. Multiple TILTs, multiple brews, no problem.</p>
+          </div>
+          <div class="about-feature">
+            <strong>HACS / Home Assistant Sensors</strong>
+            <p>Every metric published to MQTT is ready for Home Assistant auto-discovery. Temperature, SG, ABV, mode -- all as native sensors.</p>
+          </div>
+          <div class="about-feature">
+            <strong>Custom MQTT Notifications</strong>
+            <p>Brew reminders, SG stability alerts, and day-based triggers -- all pushed to your MQTT broker for Home Assistant automations.</p>
+          </div>
+          <div class="about-feature">
+            <strong>Smart Temperature Feedback</strong>
+            <p>Cascaded control that uses the hydrometer (in-liquid) temperature to adjust the fridge controller target. Nail your beer temp, not your air temp.</p>
+          </div>
+          <div class="about-feature">
+            <strong>Brew Session Tracking</strong>
+            <p>Multi-brew management with fermentation charts, OG/FG/ABV tracking, brew logs, needle gauge, and full event history.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Built By a Homebrewer</h2>
+        <p>This isn't a corporate product. It's one person, one fridge, one hydrometer, writing code between brew days. Every feature exists because I needed it for my own fermentation.</p>
+        <p>If you want an integration for gear I don't own -- I need to buy it, brew with it, understand it, and then write the code. That's where the <a href="#" onclick="showPage('support');return false">community funding</a> comes in.</p>
+      </div>
+    </div>
+
+    <!-- Integrations Page -->
+    <div id="page-integrations" class="page">
+      <div class="panel">
+        <h2>Request an Integration</h2>
+        <p>I don't own every piece of brewing gear on the market. To write an integration properly, I need to:</p>
+        <ol class="help-list">
+          <li><strong>Buy the device</strong> -- hardware costs money</li>
+          <li><strong>Brew with it</strong> -- understand how it actually works in a real fermentation</li>
+          <li><strong>Reverse-engineer the API</strong> -- figure out the data format, protocols, and quirks</li>
+          <li><strong>Write the integration</strong> -- and give it away to the community for free</li>
+        </ol>
+        <p>If you want to see a specific device supported, fund it below. Once funded, it goes to the top of the build queue.</p>
+      </div>
+
+      <div class="integration-grid">
+        <div class="panel integration-card">
+          <div class="integration-type-badges">
+            <span class="badge-type sensor">Sensor</span>
+          </div>
+          <h3>iSpindel</h3>
+          <p class="integration-desc">DIY digital hydrometer. WiFi-based, open hardware. Needs MQTT integration + calibration support.</p>
+          <p class="integration-affiliate">Get one: <a href="https://www.ispindel.de" target="_blank">ispindel.de</a></p>
+          <div class="integration-progress">
+            <div class="integration-bar"><div class="integration-fill" style="width:0%"></div></div>
+            <span class="integration-pct">$0 / $45</span>
+          </div>
+          <button class="btn-save integration-fund">Fund This</button>
+        </div>
+
+        <div class="panel integration-card">
+          <div class="integration-type-badges">
+            <span class="badge-type sensor">Sensor</span>
+          </div>
+          <h3>Plaato Airlock</h3>
+          <p class="integration-desc">CO2 activity-based fermentation monitor. Cloud API with activity data, temperature, and estimated ABV.</p>
+          <p class="integration-affiliate">Get one: <a href="https://plaato.io" target="_blank">plaato.io</a></p>
+          <div class="integration-progress">
+            <div class="integration-bar"><div class="integration-fill" style="width:0%"></div></div>
+            <span class="integration-pct">$0 / $120</span>
+          </div>
+          <button class="btn-save integration-fund">Fund This</button>
+        </div>
+
+        <div class="panel integration-card">
+          <div class="integration-type-badges">
+            <span class="badge-type controller">Controller</span>
+            <span class="badge-type sensor">Sensor</span>
+          </div>
+          <h3>Grainfather Connect</h3>
+          <p class="integration-desc">All-in-one electric brewery with Bluetooth/WiFi. Brew-day automation, mash profiles, and fermentation tracking.</p>
+          <p class="integration-affiliate">Get one: <a href="https://www.grainfather.com" target="_blank">grainfather.com</a></p>
+          <div class="integration-progress">
+            <div class="integration-bar"><div class="integration-fill" style="width:0%"></div></div>
+            <span class="integration-pct">$0 / $350</span>
+          </div>
+          <button class="btn-save integration-fund">Fund This</button>
+        </div>
+
+        <div class="panel integration-card">
+          <div class="integration-type-badges">
+            <span class="badge-type controller">Controller</span>
+          </div>
+          <h3>BrewZilla / Robobrew</h3>
+          <p class="integration-desc">Kegland all-in-one brew system. Gen 4 has Bluetooth + app control. Needs protocol analysis.</p>
+          <p class="integration-affiliate">Get one: <a href="https://www.kegland.com.au" target="_blank">kegland.com.au</a></p>
+          <div class="integration-progress">
+            <div class="integration-bar"><div class="integration-fill" style="width:0%"></div></div>
+            <span class="integration-pct">$0 / $280</span>
+          </div>
+          <button class="btn-save integration-fund">Fund This</button>
+        </div>
+
+        <div class="panel integration-card">
+          <div class="integration-type-badges">
+            <span class="badge-type controller">Controller</span>
+          </div>
+          <h3>Inkbird ITC-308 WiFi</h3>
+          <p class="integration-desc">Budget temperature controller. WiFi model has cloud API. Popular entry-level fermentation control.</p>
+          <p class="integration-affiliate">Get one: <a href="https://inkbird.com" target="_blank">inkbird.com</a></p>
+          <div class="integration-progress">
+            <div class="integration-bar"><div class="integration-fill" style="width:0%"></div></div>
+            <span class="integration-pct">$0 / $40</span>
+          </div>
+          <button class="btn-save integration-fund">Fund This</button>
+        </div>
+
+        <div class="panel integration-card">
+          <div class="integration-type-badges">
+            <span class="badge-type sensor">Sensor</span>
+          </div>
+          <h3>Tilt Pro</h3>
+          <p class="integration-desc">Higher-resolution TILT with extended range. Same BLE protocol, finer SG resolution (4 decimal places).</p>
+          <p class="integration-affiliate">Get one: <a href="https://tilthydrometer.com" target="_blank">tilthydrometer.com</a></p>
+          <div class="integration-progress">
+            <div class="integration-bar"><div class="integration-fill" style="width:0%"></div></div>
+            <span class="integration-pct">$0 / $130</span>
+          </div>
+          <button class="btn-save integration-fund">Fund This</button>
+        </div>
+
+        <div class="panel integration-card">
+          <div class="integration-type-badges">
+            <span class="badge-type sensor">Sensor</span>
+          </div>
+          <h3>RAPT Pill</h3>
+          <p class="integration-desc">Kegland's floating hydrometer. BLE-based, cloud API via RAPT Portal. Direct competitor to TILT.</p>
+          <p class="integration-affiliate">Get one: <a href="https://www.kegland.com.au" target="_blank">kegland.com.au</a></p>
+          <div class="integration-progress">
+            <div class="integration-bar"><div class="integration-fill" style="width:0%"></div></div>
+            <span class="integration-pct">$0 / $55</span>
+          </div>
+          <button class="btn-save integration-fund">Fund This</button>
+        </div>
+
+        <div class="panel integration-card">
+          <h3>Suggest a Device</h3>
+          <p class="integration-desc">Don't see your gear? Let me know what you're brewing with and I'll look into it.</p>
+          <div class="integration-progress">
+            <div class="integration-bar"><div class="integration-fill" style="width:0%"></div></div>
+            <span class="integration-pct">--</span>
+          </div>
+          <button class="btn-save integration-fund">Request</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Support Page -->
+    <div id="page-support" class="page">
+      <div class="panel">
+        <h2>Support the Project</h2>
+        <p>RAPT2MQTT is free, open source, and built by one person. Every feature you use was written between brew days, tested on real fermentations, and given away to the community.</p>
+        <p>I don't own all the brewing gear. To build integrations for new devices, I need to buy them, brew with them, understand them, and then write the code. Your support makes that possible.</p>
+      </div>
+
+      <div class="panel">
+        <h2>What Your Support Funds</h2>
+        <div class="support-breakdown">
+          <div class="support-item">
+            <strong>Hardware</strong>
+            <p>Buying the actual brewing devices to reverse-engineer and integrate.</p>
+          </div>
+          <div class="support-item">
+            <strong>Ingredients</strong>
+            <p>Every integration needs real brew days to test. Grain, hops, yeast, and time.</p>
+          </div>
+          <div class="support-item">
+            <strong>Development</strong>
+            <p>Ongoing development, bug fixes, and new features for the whole community.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel support-donate-panel">
+        <h2>Buy Me a Beer</h2>
+        <p class="help-text">Choose a support tier or enter a custom amount.</p>
+        <div class="donate-tiers">
+          <div class="donate-tier">
+            <div class="donate-tier-name">A Pint</div>
+            <div class="donate-tier-price">$5</div>
+            <p>Cheers! Keeps the lights on.</p>
+            <button class="btn-save donate-btn">Donate $5</button>
+          </div>
+          <div class="donate-tier">
+            <div class="donate-tier-name">A Six Pack</div>
+            <div class="donate-tier-price">$15</div>
+            <p>Funds a brew day's worth of testing.</p>
+            <button class="btn-save donate-btn">Donate $15</button>
+          </div>
+          <div class="donate-tier">
+            <div class="donate-tier-name">A Keg</div>
+            <div class="donate-tier-price">$50</div>
+            <p>Covers a budget device integration.</p>
+            <button class="btn-save donate-btn">Donate $50</button>
+          </div>
+          <div class="donate-tier featured">
+            <div class="donate-tier-name">The Full Brew</div>
+            <div class="donate-tier-price">$100+</div>
+            <p>Directly funds a new device purchase.</p>
+            <button class="btn-save donate-btn">Donate $100</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Community Fund</h2>
+        <div class="fund-total">
+          <div class="fund-amount">$0</div>
+          <div class="fund-label">raised so far</div>
+        </div>
+        <p class="help-text" style="text-align:center;margin-top:12px">Payment integration coming soon. For now, reach out on GitHub to sponsor.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Already Free</h2>
+        <p>These features are available right now, at no cost:</p>
+        <ul class="help-list">
+          <li>RAPT Temperature Controller integration (cloud API)</li>
+          <li>Multi-TILT hydrometer support via MQTT</li>
+          <li>Home Assistant / HACS sensor auto-discovery</li>
+          <li>Custom MQTT notifications and brew reminders</li>
+          <li>Smart temperature feedback (hydrometer-driven cascaded control)</li>
+          <li>Multi-brew session management with charts and logs</li>
+          <li>Dark-theme web UI -- no frameworks, no bloat</li>
+        </ul>
       </div>
     </div>
 

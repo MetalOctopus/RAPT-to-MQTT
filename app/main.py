@@ -253,6 +253,7 @@ def start_brew_session():
             target_beer_temp=data.get("target_beer_temp"),
             og=data.get("og"),
             notes=data.get("notes", ""),
+            temp_source=data.get("temp_source", "hydrometer"),
         )
         return jsonify(session)
     except ValueError as e:
@@ -376,6 +377,7 @@ def start_brew_legacy():
             target_beer_temp=data.get("target_beer_temp"),
             og=data.get("og"),
             notes=data.get("notes", ""),
+            temp_source=data.get("temp_source", "hydrometer"),
         )
         return jsonify(session)
     except ValueError as e:

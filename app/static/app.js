@@ -60,7 +60,8 @@ function showPage(page, id) {
     if (page !== "brew-detail") currentBrewId = null;
     if (page === "dashboard") { refreshDashboard(); loadChartDeviceList(); }
     if (page === "brews") loadBrewsPage();
-    if (page === "newbrew") loadNewBrewForm();
+    if (page === "newbrew") { loadNewBrewForm(); applyAffiliateVisibility(); }
+    if (page === "integrations") applyAffiliateVisibility();
   }
 }
 
@@ -200,6 +201,9 @@ async function loadConfig() {
     document.getElementById("poll_interval").value = cfg.poll_interval || 300;
     document.getElementById("notification_topic").value = cfg.notification_topic || "RAPT2MQTT/notify";
     document.getElementById("auto_start").checked = cfg.auto_start !== false;
+    document.getElementById("hide_affiliate_links").checked = !!cfg.hide_affiliate_links;
+    window._hideAffiliateLinks = !!cfg.hide_affiliate_links;
+    applyAffiliateVisibility();
   } catch (e) { showToast("Failed to load config", "error"); }
 }
 
@@ -214,12 +218,16 @@ async function saveConfig() {
     poll_interval: document.getElementById("poll_interval").value,
     notification_topic: document.getElementById("notification_topic").value,
     auto_start: document.getElementById("auto_start").checked,
+    hide_affiliate_links: document.getElementById("hide_affiliate_links").checked,
   };
   try {
     const res = await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
     const result = await res.json();
-    if (res.ok) showToast("Configuration saved", "success");
-    else showToast(result.error || "Save failed", "error");
+    if (res.ok) {
+      showToast("Configuration saved", "success");
+      window._hideAffiliateLinks = data.hide_affiliate_links;
+      applyAffiliateVisibility();
+    } else showToast(result.error || "Save failed", "error");
   } catch (e) { showToast("Failed to save config", "error"); }
 }
 
@@ -809,6 +817,7 @@ document.getElementById("btn-start-brew").addEventListener("click", async () => 
     target_beer_temp: parseFloat(document.getElementById("brew-target-temp").value) || null,
     tilt_device_id: document.getElementById("brew-tilt").value || null,
     controller_device_id: document.getElementById("brew-controller").value || null,
+    temp_source: document.getElementById("brew-temp-source").value,
     notes: document.getElementById("brew-notes").value,
   };
   try {
@@ -837,6 +846,9 @@ async function loadBrewDetail(sessionId) {
     const b = await res.json();
     renderBrewDetail(b);
     autoPopulateBrewChart(b);
+    // Restore filter button state
+    const filterBtn = document.getElementById("btn-brew-filter");
+    if (filterBtn) filterBtn.textContent = brewFilterEnabled[sessionId] ? "Filter: ON" : "Filter: OFF";
   } catch (e) {}
 }
 
@@ -857,6 +869,10 @@ function renderBrewDetail(b) {
   document.getElementById("brew-og-display").textContent = og != null ? Math.round(og * 1000) : "--";
   document.getElementById("brew-target-display").textContent = b.target_beer_temp != null ? formatTemp(b.target_beer_temp, "C") : "--";
   document.getElementById("brew-fridge-target").textContent = b.controller_target != null ? formatTemp(b.controller_target, "C") : "--";
+
+  // Temp source display
+  const sourceLabels = { hydrometer: "Hydrometer", controller: "Controller", mean: "Mean" };
+  document.getElementById("brew-temp-source-display").textContent = sourceLabels[b.temp_source] || "Hydrometer";
 
   // ABV under gauge
   const abvText = b.current_abv != null ? b.current_abv.toFixed(1) + "% ABV" : "-- ABV";
@@ -897,6 +913,8 @@ function renderBrewDetail(b) {
   loadFeedbackChart(b.id);
 }
 
+let brewGauge = null;
+
 function updateNeedleGauge(b) {
   const og = b.og;
   const sg = b.current_sg;
@@ -909,33 +927,83 @@ function updateNeedleGauge(b) {
     pct = totalDrop > 0 ? Math.min(100, Math.max(0, (currentDrop / totalDrop) * 100)) : 0;
   }
 
-  // Update percentage text
-  document.getElementById("gauge-pct-text").textContent = Math.round(pct) + "%";
+  const canvas = document.getElementById("brew-gauge-canvas");
+  if (!canvas) return;
 
-  // Needle angle: 0% = -90deg (left), 100% = 90deg (right) -- in SVG coords, 180 to 0
-  const angle = Math.PI - (pct / 100) * Math.PI;
-  const needleLen = 85;
-  const cx = 130, cy = 130;
-  const nx = cx + needleLen * Math.cos(angle);
-  const ny = cy - needleLen * Math.sin(angle);
-  document.getElementById("gauge-needle").setAttribute("x2", nx.toFixed(1));
-  document.getElementById("gauge-needle").setAttribute("y2", ny.toFixed(1));
-
-  // Progress arc
-  const startAngle = Math.PI;
-  const endAngle = Math.PI - (pct / 100) * Math.PI;
-  const r = 100;
-  const x1 = cx + r * Math.cos(startAngle);
-  const y1 = cy - r * Math.sin(startAngle);
-  const x2 = cx + r * Math.cos(endAngle);
-  const y2 = cy - r * Math.sin(endAngle);
-  const largeArc = pct > 50 ? 1 : 0;
-  if (pct > 0.5) {
-    document.getElementById("gauge-arc").setAttribute("d",
-      `M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(1)} ${y2.toFixed(1)}`);
-  } else {
-    document.getElementById("gauge-arc").setAttribute("d", "");
+  if (!brewGauge) {
+    brewGauge = new RadialGauge({
+      renderTo: canvas,
+      width: 320,
+      height: 320,
+      units: "%",
+      title: "Fermentation",
+      minValue: 0,
+      maxValue: 100,
+      majorTicks: ["0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100"],
+      minorTicks: 5,
+      startAngle: 90,
+      ticksAngle: 180,
+      valueBox: true,
+      valueBoxStroke: 0,
+      valueTextShadow: false,
+      valueDec: 0,
+      value: 0,
+      // Colors — dark theme
+      colorPlate: "#161b22",
+      colorMajorTicks: "#8b949e",
+      colorMinorTicks: "#484f58",
+      colorNumbers: "#8b949e",
+      colorTitle: "#8b949e",
+      colorUnits: "#8b949e",
+      colorValueText: "#e6edf3",
+      colorValueBoxBackground: "transparent",
+      colorValueBoxRect: "transparent",
+      colorValueBoxRectEnd: "transparent",
+      colorValueBoxShadow: "transparent",
+      colorNeedleShadowUp: "transparent",
+      colorNeedleShadowDown: "rgba(0,0,0,0.4)",
+      colorNeedle: "#e6edf3",
+      colorNeedleEnd: "#c9d1d9",
+      colorNeedleCircleOuter: "#58a6ff",
+      colorNeedleCircleOuterEnd: "#58a6ff",
+      colorNeedleCircleInner: "#30363d",
+      colorNeedleCircleInnerEnd: "#30363d",
+      colorBorderOuter: "#21262d",
+      colorBorderOuterEnd: "#21262d",
+      colorBorderMiddle: "#21262d",
+      colorBorderMiddleEnd: "#21262d",
+      colorBorderInner: "#161b22",
+      colorBorderInnerEnd: "#161b22",
+      // Progress zones: orange → yellow → green
+      highlights: [
+        { from: 0, to: 25, color: "rgba(240,136,62,0.35)" },
+        { from: 25, to: 50, color: "rgba(210,153,34,0.35)" },
+        { from: 50, to: 75, color: "rgba(126,231,135,0.25)" },
+        { from: 75, to: 100, color: "rgba(46,160,67,0.4)" },
+      ],
+      // Needle
+      needleType: "arrow",
+      needleWidth: 3,
+      needleShadow: true,
+      needleCircleSize: 10,
+      // Borders
+      borderOuterWidth: 2,
+      borderMiddleWidth: 2,
+      borderInnerWidth: 2,
+      borderShadowWidth: 0,
+      // Animation
+      animation: true,
+      animationDuration: 800,
+      animationRule: "elastic",
+      // Font
+      fontTitleSize: 22,
+      fontUnitsSize: 18,
+      fontValueSize: 32,
+      fontNumbersSize: 16,
+    }).draw();
   }
+
+  brewGauge.value = Math.round(pct);
 }
 
 function renderBrewLog(events, startedAt) {
@@ -1038,6 +1106,13 @@ function editBrewTargetTemp() {
   updateBrewField(currentBrewId, "target_beer_temp", parseFloat(newTemp));
 }
 
+function editBrewTempSource() {
+  if (!currentBrewId) return;
+  const choice = prompt("Temperature source for feedback loop:\n1 = Hydrometer (in-liquid)\n2 = Controller (fridge air)\n3 = Mean of both\n\nEnter 1, 2, or 3:");
+  const map = { "1": "hydrometer", "2": "controller", "3": "mean" };
+  if (map[choice]) updateBrewField(currentBrewId, "temp_source", map[choice]);
+}
+
 async function updateBrewField(sessionId, field, value) {
   try {
     const res = await fetch(`/api/brews/${sessionId}/update`, {
@@ -1049,12 +1124,28 @@ async function updateBrewField(sessionId, field, value) {
   } catch (e) { showToast("Failed", "error"); }
 }
 
+/* Outlier filter — rate-of-change filter for chart data */
+let brewFilterEnabled = {};
+
+function filterOutliers(data, maxRate) {
+  if (data.length < 2) return data;
+  const filtered = [data[0]];
+  for (let i = 1; i < data.length; i++) {
+    const dt = (data[i].x - data[i - 1].x) / 1000;
+    if (dt <= 0) continue;
+    const rate = Math.abs(data[i].y - filtered[filtered.length - 1].y) / (dt / 60);
+    if (rate <= maxRate) filtered.push(data[i]);
+  }
+  return filtered;
+}
+
 /* Auto-populate brew chart with default series */
 let brewChartCleared = {};
 
-async function autoPopulateBrewChart(brew) {
+async function autoPopulateBrewChart(brew, forceRebuild) {
   const sessionId = brew.id;
-  if (brewCharts[sessionId] || brewChartCleared[sessionId]) return;
+  if (!forceRebuild && (brewCharts[sessionId] || brewChartCleared[sessionId])) return;
+  if (forceRebuild && brewCharts[sessionId]) { brewCharts[sessionId].destroy(); delete brewCharts[sessionId]; }
 
   const range = parseInt(document.getElementById("brew-chart-range").value);
   const start = (Date.now() / 1000) - range;
@@ -1072,6 +1163,7 @@ async function autoPopulateBrewChart(brew) {
   if (ctrlId) {
     fetches.fridgeTemp = fetch(`/api/history/${ctrlId}/temperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
     fetches.fridgeTarget = fetch(`/api/history/${ctrlId}/targetTemperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
+    fetches.mode = fetch(`/api/history/${ctrlId}/mode?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
   }
 
   const keys = Object.keys(fetches);
@@ -1079,21 +1171,28 @@ async function autoPopulateBrewChart(brew) {
   const results = {};
   keys.forEach((k, i) => results[k] = values[i]);
 
+  const doFilter = brewFilterEnabled[sessionId];
+  const mapPts = (arr) => arr.map(d => ({ x: d.timestamp * 1000, y: d.value }));
+
   const datasets = [];
   let hasSG = false;
 
   if (results.beerTemp?.length) {
+    let pts = mapPts(results.beerTemp);
+    if (doFilter) pts = filterOutliers(pts, 2.0);
     datasets.push({
       label: "Beer Temp (\u00b0C)",
-      data: results.beerTemp.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+      data: pts,
       borderColor: "#f0883e", backgroundColor: "#f0883e33",
       borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: "y",
     });
   }
   if (results.fridgeTemp?.length) {
+    let pts = mapPts(results.fridgeTemp);
+    if (doFilter) pts = filterOutliers(pts, 2.0);
     datasets.push({
       label: "Fridge Temp (\u00b0C)",
-      data: results.fridgeTemp.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+      data: pts,
       borderColor: "#58a6ff", backgroundColor: "#58a6ff33",
       borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: "y",
     });
@@ -1101,18 +1200,43 @@ async function autoPopulateBrewChart(brew) {
   if (results.fridgeTarget?.length) {
     datasets.push({
       label: "Fridge Target (\u00b0C)",
-      data: results.fridgeTarget.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+      data: mapPts(results.fridgeTarget),
       borderColor: "#2ea043",
       borderWidth: 1, borderDash: [5, 5], pointRadius: 0, yAxisID: "y",
     });
   }
   if (results.sg?.length) {
     hasSG = true;
+    let pts = mapPts(results.sg);
+    if (doFilter) pts = filterOutliers(pts, 20);
     datasets.push({
       label: "Specific Gravity",
-      data: results.sg.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+      data: pts,
       borderColor: "#c9d1d9", backgroundColor: "rgba(201,209,217,0.1)",
       borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: "y1",
+    });
+  }
+
+  let hasMode = false;
+  if (results.mode?.length) {
+    hasMode = true;
+    datasets.push({
+      label: "Mode",
+      data: results.mode.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+      borderWidth: 0,
+      pointRadius: 0,
+      fill: true,
+      stepped: true,
+      yAxisID: "yMode",
+      backgroundColor: "rgba(100,100,100,0.08)",
+      segment: {
+        backgroundColor: ctx => {
+          const v = ctx.p1.parsed.y;
+          if (v < 0) return "rgba(88,166,255,0.18)";
+          if (v > 0) return "rgba(240,136,62,0.18)";
+          return "rgba(100,100,100,0.08)";
+        },
+      },
     });
   }
 
@@ -1127,6 +1251,9 @@ async function autoPopulateBrewChart(brew) {
   if (hasSG) {
     scales.y1 = { position: "right", title: { display: true, text: "Specific Gravity", color: "#8b949e" },
                   ticks: { color: "#8b949e", callback: v => Math.round(v) }, grid: { drawOnChartArea: false } };
+  }
+  if (hasMode) {
+    scales.yMode = { display: false, min: -1.5, max: 1.5 };
   }
 
   const ctx = document.getElementById("brew-chart").getContext("2d");
@@ -1162,6 +1289,18 @@ document.getElementById("btn-brew-add-series").addEventListener("click", async (
       deviceId, metric, range, "left"
     );
   } catch (e) { showToast("Failed", "error"); }
+});
+
+document.getElementById("btn-brew-filter").addEventListener("click", async () => {
+  if (!currentBrewId) return;
+  brewFilterEnabled[currentBrewId] = !brewFilterEnabled[currentBrewId];
+  const btn = document.getElementById("btn-brew-filter");
+  btn.textContent = brewFilterEnabled[currentBrewId] ? "Filter: ON" : "Filter: OFF";
+  // Rebuild chart with filter applied/removed
+  try {
+    const b = await (await fetch(`/api/brews/${currentBrewId}`)).json();
+    autoPopulateBrewChart(b, true);
+  } catch (e) {}
 });
 
 document.getElementById("btn-brew-clear-chart").addEventListener("click", () => {
@@ -1284,6 +1423,22 @@ function initConsole() {
   const source = new EventSource("/api/logs/stream");
   source.onmessage = (e) => appendLog(e.data);
 }
+
+/* --- Affiliate link visibility --- */
+function applyAffiliateVisibility() {
+  const hide = window._hideAffiliateLinks;
+  document.querySelectorAll(".integration-affiliate, .affiliate-hint").forEach(el => {
+    el.style.display = hide ? "none" : "";
+  });
+}
+
+/* --- Dummy fund/donate buttons --- */
+document.addEventListener("click", (e) => {
+  if (e.target.classList.contains("integration-fund") || e.target.classList.contains("donate-btn")) {
+    e.preventDefault();
+    showToast("Payment integration coming soon! Check GitHub to sponsor.", "success");
+  }
+});
 
 /* --- Nav click handlers --- */
 document.querySelectorAll("[data-page]").forEach(el => {

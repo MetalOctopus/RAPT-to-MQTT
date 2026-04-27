@@ -536,11 +536,16 @@ code {
   width: 100%;
 }
 
-/* --- Needle Gauge --- */
-.needle-gauge {
-  width: 100%;
+/* --- Fermentation Gauge (canvas-gauges) --- */
+.gauge-needle-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.gauge-needle-container canvas {
   max-width: 320px;
-  height: auto;
 }
 
 .gauge-abv {
@@ -548,14 +553,7 @@ code {
   font-size: 1.5em;
   font-weight: 700;
   color: #e6edf3;
-  margin-top: 4px;
-}
-
-.gauge-needle-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8px 0;
+  margin-top: -20px;
 }
 
 /* --- Brew Tiles --- */
@@ -905,4 +903,206 @@ code {
   .chart-container {
     height: 200px;
   }
+  .integration-grid {
+    grid-template-columns: 1fr;
+  }
+  .donate-tiers {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Affiliate hint --- */
+.affiliate-hint {
+  color: #484f58;
+  font-size: 0.75em;
+  font-weight: normal;
+  text-decoration: none;
+  margin-left: 6px;
+}
+.affiliate-hint:hover {
+  color: #8b949e;
+  text-decoration: underline;
+}
+
+/* --- About Page --- */
+.about-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+.about-feature {
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 6px;
+  padding: 16px;
+}
+.about-feature strong {
+  color: #e6edf3;
+  display: block;
+  margin-bottom: 6px;
+}
+.about-feature p {
+  color: #8b949e;
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+/* --- Integrations Page --- */
+.integration-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+.integration-card {
+  display: flex;
+  flex-direction: column;
+}
+.integration-card h3 {
+  color: #e6edf3;
+  margin-bottom: 8px;
+}
+.integration-desc {
+  color: #8b949e;
+  font-size: 0.9em;
+  line-height: 1.4;
+  flex: 1;
+  margin-bottom: 12px;
+}
+.integration-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.integration-bar {
+  flex: 1;
+  height: 8px;
+  background: #21262d;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.integration-fill {
+  height: 100%;
+  background: #2ea043;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+.integration-pct {
+  color: #8b949e;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+.integration-fund {
+  align-self: flex-start;
+}
+.integration-type-badges {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.badge-type {
+  font-size: 0.75em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.badge-type.sensor {
+  background: rgba(88, 166, 255, 0.15);
+  color: #58a6ff;
+  border: 1px solid rgba(88, 166, 255, 0.3);
+}
+.badge-type.controller {
+  background: rgba(240, 136, 62, 0.15);
+  color: #f0883e;
+  border: 1px solid rgba(240, 136, 62, 0.3);
+}
+.integration-affiliate {
+  font-size: 0.75em;
+  color: #484f58;
+  margin-bottom: 12px;
+}
+.integration-affiliate a {
+  color: #6e7681;
+  text-decoration: none;
+}
+.integration-affiliate a:hover {
+  color: #8b949e;
+  text-decoration: underline;
+}
+
+/* --- Support / Donate Page --- */
+.support-breakdown {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+.support-item {
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 6px;
+  padding: 16px;
+}
+.support-item strong {
+  color: #e6edf3;
+  display: block;
+  margin-bottom: 6px;
+}
+.support-item p {
+  color: #8b949e;
+  font-size: 0.9em;
+}
+.donate-tiers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+.donate-tier {
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+.donate-tier.featured {
+  border-color: #e6a817;
+  background: #1c1e0f;
+}
+.donate-tier-name {
+  color: #e6edf3;
+  font-weight: bold;
+  font-size: 1.1em;
+  margin-bottom: 4px;
+}
+.donate-tier-price {
+  color: #58a6ff;
+  font-size: 1.8em;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+.donate-tier p {
+  color: #8b949e;
+  font-size: 0.9em;
+  margin-bottom: 12px;
+}
+.donate-btn {
+  width: 100%;
+}
+.fund-total {
+  text-align: center;
+  padding: 20px 0;
+}
+.fund-amount {
+  font-size: 3em;
+  font-weight: bold;
+  color: #2ea043;
+}
+.fund-label {
+  color: #8b949e;
+  font-size: 1.1em;
 }

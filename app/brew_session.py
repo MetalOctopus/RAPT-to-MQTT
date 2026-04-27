@@ -42,7 +42,7 @@ class BrewSession:
         return dict(self._active_sessions)
 
     def start_brew(self, name, tilt_device_id=None, controller_device_id=None,
-                   target_beer_temp=None, og=None, notes=""):
+                   target_beer_temp=None, og=None, notes="", temp_source="hydrometer"):
         session_id = str(uuid.uuid4())[:8]
         session = {
             "id": session_id,
@@ -64,6 +64,7 @@ class BrewSession:
             "temp_feedback_min": 0.0,
             "temp_feedback_max": 35.0,
             "temp_feedback_deadband": 0.3,
+            "temp_source": temp_source,
         }
 
         self._history.save_session(session_id, json.dumps(session))
@@ -80,7 +81,8 @@ class BrewSession:
         for key in ["name", "target_beer_temp", "og", "fg", "notes",
                      "tilt_device_id", "controller_device_id",
                      "temp_feedback_gain", "temp_feedback_interval",
-                     "temp_feedback_min", "temp_feedback_max", "temp_feedback_deadband"]:
+                     "temp_feedback_min", "temp_feedback_max", "temp_feedback_deadband",
+                     "temp_source"]:
             if key in updates:
                 session[key] = updates[key]
 
@@ -235,8 +237,23 @@ class BrewSession:
                     stop_event.wait(timeout=60)
                     continue
 
-                beer_temp = tilt.get("temperature")
-                fridge_temp = ctrl.get("temperature")
+                # Which sensor provides "beer temp" for the feedback calculation?
+                # The loop adjusts the controller's TARGET so that measured
+                # beer temp converges on the brew's desired beer temp.
+                temp_source = session.get("temp_source", "hydrometer")
+                if temp_source == "controller":
+                    beer_temp = ctrl.get("temperature") if ctrl else None
+                elif temp_source == "mean":
+                    t_tilt = tilt.get("temperature") if tilt else None
+                    t_ctrl = ctrl.get("temperature") if ctrl else None
+                    if t_tilt is not None and t_ctrl is not None:
+                        beer_temp = round((t_tilt + t_ctrl) / 2, 1)
+                    else:
+                        beer_temp = t_tilt if t_tilt is not None else t_ctrl
+                else:  # "hydrometer" (default) -- sensor is IN the liquid
+                    beer_temp = tilt.get("temperature") if tilt else None
+
+                fridge_temp = ctrl.get("temperature") if ctrl else None
                 current_target = ctrl.get("targetTemperature")
 
                 if beer_temp is None or current_target is None:
