@@ -529,16 +529,25 @@ code {
 }
 
 /* --- Needle Gauge --- */
-.gauge-needle-container {
-  display: flex;
-  justify-content: center;
-  padding: 8px 0;
-}
-
 .needle-gauge {
   width: 100%;
   max-width: 320px;
   height: auto;
+}
+
+.gauge-abv {
+  text-align: center;
+  font-size: 1.5em;
+  font-weight: 700;
+  color: #e6edf3;
+  margin-top: 4px;
+}
+
+.gauge-needle-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
 }
 
 /* --- Brew Tiles --- */

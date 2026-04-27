@@ -837,6 +837,7 @@ async function loadBrewDetail(sessionId) {
     if (!res.ok) { showToast("Brew not found", "error"); showPage("brews"); return; }
     const b = await res.json();
     renderBrewDetail(b);
+    autoPopulateBrewChart(b);
   } catch (e) {}
 }
 
@@ -856,6 +857,11 @@ function renderBrewDetail(b) {
   const og = b.og;
   document.getElementById("brew-og-display").textContent = og != null ? Math.round(og * 1000) : "--";
   document.getElementById("brew-target-display").textContent = b.target_beer_temp != null ? formatTemp(b.target_beer_temp, "C") : "--";
+  document.getElementById("brew-fridge-target").textContent = b.controller_target != null ? formatTemp(b.controller_target, "C") : "--";
+
+  // ABV under gauge
+  const abvText = b.current_abv != null ? b.current_abv.toFixed(1) + "% ABV" : "-- ABV";
+  document.getElementById("gauge-abv-display").textContent = abvText;
 
   // OG hint: if current SG > OG, suggest updating
   if (og && b.current_sg && b.current_sg > og) {
@@ -1039,6 +1045,100 @@ async function updateBrewField(sessionId, field, value) {
   } catch (e) { showToast("Failed", "error"); }
 }
 
+/* Auto-populate brew chart with default series */
+let brewChartCleared = {};
+
+async function autoPopulateBrewChart(brew) {
+  const sessionId = brew.id;
+  if (brewCharts[sessionId] || brewChartCleared[sessionId]) return;
+
+  const range = parseInt(document.getElementById("brew-chart-range").value);
+  const start = (Date.now() / 1000) - range;
+  const limit = range >= 604800 ? 10000 : 5000;
+
+  const tiltId = brew.tilt_device_id;
+  const ctrlId = brew.controller_device_id;
+  if (!tiltId && !ctrlId) return;
+
+  const fetches = {};
+  if (tiltId) {
+    fetches.beerTemp = fetch(`/api/history/${tiltId}/temperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
+    fetches.sg = fetch(`/api/history/${tiltId}/specificGravity?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
+  }
+  if (ctrlId) {
+    fetches.fridgeTemp = fetch(`/api/history/${ctrlId}/temperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
+    fetches.fridgeTarget = fetch(`/api/history/${ctrlId}/targetTemperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
+  }
+
+  const keys = Object.keys(fetches);
+  const values = await Promise.all(keys.map(k => fetches[k]));
+  const results = {};
+  keys.forEach((k, i) => results[k] = values[i]);
+
+  const datasets = [];
+  let hasSG = false;
+
+  if (results.beerTemp?.length) {
+    datasets.push({
+      label: "Beer Temp (\u00b0C)",
+      data: results.beerTemp.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+      borderColor: "#f0883e", backgroundColor: "#f0883e33",
+      borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: "y",
+    });
+  }
+  if (results.fridgeTemp?.length) {
+    datasets.push({
+      label: "Fridge Temp (\u00b0C)",
+      data: results.fridgeTemp.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+      borderColor: "#58a6ff", backgroundColor: "#58a6ff33",
+      borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: "y",
+    });
+  }
+  if (results.fridgeTarget?.length) {
+    datasets.push({
+      label: "Fridge Target (\u00b0C)",
+      data: results.fridgeTarget.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+      borderColor: "#2ea043",
+      borderWidth: 1, borderDash: [5, 5], pointRadius: 0, yAxisID: "y",
+    });
+  }
+  if (results.sg?.length) {
+    hasSG = true;
+    datasets.push({
+      label: "Specific Gravity",
+      data: results.sg.map(d => ({ x: d.timestamp * 1000, y: d.value })),
+      borderColor: "#c9d1d9", backgroundColor: "rgba(201,209,217,0.1)",
+      borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: "y1",
+    });
+  }
+
+  if (!datasets.length) return;
+
+  const scales = {
+    x: { type: "time", time: { tooltipFormat: "HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm" } },
+         ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+    y: { position: "left", title: { display: true, text: "Temperature (\u00b0C)", color: "#8b949e" },
+         ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+  };
+  if (hasSG) {
+    scales.y1 = { position: "right", title: { display: true, text: "Specific Gravity", color: "#8b949e" },
+                  ticks: { color: "#8b949e" }, grid: { drawOnChartArea: false } };
+  }
+
+  const ctx = document.getElementById("brew-chart").getContext("2d");
+  brewCharts[sessionId] = new Chart(ctx, {
+    type: "line",
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      scales,
+      plugins: { legend: { labels: { color: "#c9d1d9" } } },
+    },
+  });
+  brewChartSeries[sessionId] = datasets.map(d => ({ label: d.label }));
+}
+
 /* Brew chart (persistent per session) */
 document.getElementById("btn-brew-add-series").addEventListener("click", async () => {
   if (!currentBrewId) return;
@@ -1061,10 +1161,13 @@ document.getElementById("btn-brew-add-series").addEventListener("click", async (
 });
 
 document.getElementById("btn-brew-clear-chart").addEventListener("click", () => {
-  if (currentBrewId && brewCharts[currentBrewId]) {
-    brewCharts[currentBrewId].destroy();
-    delete brewCharts[currentBrewId];
+  if (currentBrewId) {
+    if (brewCharts[currentBrewId]) {
+      brewCharts[currentBrewId].destroy();
+      delete brewCharts[currentBrewId];
+    }
     delete brewChartSeries[currentBrewId];
+    brewChartCleared[currentBrewId] = true;
   }
 });
 
