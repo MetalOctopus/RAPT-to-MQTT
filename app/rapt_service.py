@@ -393,8 +393,8 @@ class RaptBridge:
                         break
         if not device_id:
             self._logger.error("Cannot set temperature: no controller found.")
-            return
-        self._set_temperature_for_device(round(float(target), 1), device_id)
+            return {"sent": target, "confirmed": None, "error": "No controller found"}
+        return self._set_temperature_for_device(round(float(target), 1), device_id)
 
     def set_pid_enabled(self, state, device_id):
         """Enable or disable PID control on a RAPT controller."""

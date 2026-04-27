@@ -951,8 +951,8 @@ function renderBrewDetail(b) {
   // Events (text-based brew log)
   renderBrewLog(b.events || [], b.started_at);
 
-  // Load feedback chart (only if not already loaded for this session)
-  loadFeedbackChart(b.id);
+  // Load feedback chart
+  if (b.temp_feedback_enabled) loadFeedbackChart(b.id, true);
 }
 
 let brewGauges = {};
@@ -1712,36 +1712,91 @@ document.getElementById("btn-brew-clear-chart").addEventListener("click", () => 
 /* Feedback chart */
 let lastFeedbackSession = null;
 
-async function loadFeedbackChart(sessionId) {
-  // Only recreate if session changed
-  if (lastFeedbackSession === sessionId && feedbackChart) return;
+async function loadFeedbackChart(sessionId, forceReload) {
+  // Only recreate if session changed or forced
+  if (!forceReload && lastFeedbackSession === sessionId && feedbackChart) return;
   if (feedbackChart) { feedbackChart.destroy(); feedbackChart = null; }
   lastFeedbackSession = sessionId;
   try {
     const data = await (await fetch(`/api/brews/${sessionId}/feedback/log`)).json();
     if (!data.length) return;
+
+    // Last 4 hours only — keeps it readable
+    const cutoff = Date.now() - (4 * 60 * 60 * 1000);
+    const recent = data.filter(d => d.timestamp * 1000 >= cutoff);
+    const pts = recent.length ? recent : data.slice(-48); // fallback: last 48 points
+
+    // Compute Y range: find min/max across all temps, pad by 2°C
+    let allTemps = [];
+    pts.forEach(d => {
+      if (d.beer_temp != null) allTemps.push(d.beer_temp);
+      if (d.fridge_temp != null) allTemps.push(d.fridge_temp);
+      if (d.target_beer_temp != null) allTemps.push(d.target_beer_temp);
+      if (d.new_controller_target != null) allTemps.push(d.new_controller_target);
+    });
+    const yMin = Math.floor(Math.min(...allTemps) - 2);
+    const yMax = Math.ceil(Math.max(...allTemps) + 2);
+
     const ctx = document.getElementById("feedback-chart").getContext("2d");
+
+    // Error band fill between beer temp and beer target
+    const beerData = pts.map(d => ({ x: d.timestamp * 1000, y: d.beer_temp }));
+    const targetData = pts.map(d => ({ x: d.timestamp * 1000, y: d.target_beer_temp }));
+
     feedbackChart = new Chart(ctx, {
       type: "line",
       data: {
         datasets: [
-          { label: "Beer Temp", data: data.map(d => ({ x: d.timestamp * 1000, y: d.beer_temp })),
-            borderColor: "#f0883e", borderWidth: 2, pointRadius: 0, tension: 0.3 },
-          { label: "Target Beer", data: data.map(d => ({ x: d.timestamp * 1000, y: d.target_beer_temp })),
-            borderColor: "#2ea043", borderWidth: 1, borderDash: [5, 5], pointRadius: 0 },
-          { label: "Fridge Target", data: data.map(d => ({ x: d.timestamp * 1000, y: d.new_controller_target })),
-            borderColor: "#58a6ff", borderWidth: 2, pointRadius: 0, tension: 0.3 },
-          { label: "Fridge Temp", data: data.map(d => ({ x: d.timestamp * 1000, y: d.fridge_temp })),
-            borderColor: "#79c0ff", borderWidth: 1, pointRadius: 0, tension: 0.3 },
+          // Beer target — the green dashed line you want the beer to hit
+          { label: "Your Beer Target",
+            data: targetData,
+            borderColor: "#2ea043", borderWidth: 2, borderDash: [6, 4],
+            pointRadius: 0, fill: false, order: 3 },
+          // Beer temp — actual liquid reading (the truth)
+          { label: "Actual Beer Temp (hydrometer)",
+            data: beerData,
+            borderColor: "#f0883e", borderWidth: 3, pointRadius: 2, pointBackgroundColor: "#f0883e",
+            tension: 0.3,
+            fill: { target: 0, above: "rgba(248,81,73,0.12)", below: "rgba(88,166,255,0.12)" },
+            order: 2 },
+          // Controller target — what we told the fridge to do via RAPT API
+          { label: "Controller Target (what we sent)",
+            data: pts.map(d => ({ x: d.timestamp * 1000, y: d.new_controller_target })),
+            borderColor: "#58a6ff", borderWidth: 2, pointRadius: 0,
+            stepped: "before", fill: false, order: 4 },
+          // Fridge air — what the controller's probe reads
+          { label: "Fridge Air Temp",
+            data: pts.map(d => ({ x: d.timestamp * 1000, y: d.fridge_temp })),
+            borderColor: "rgba(121,192,255,0.5)", borderWidth: 1, pointRadius: 0,
+            tension: 0.3, fill: false, order: 5 },
         ],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
         scales: {
-          x: { type: "time", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
-          y: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+          x: { type: "time",
+            time: { tooltipFormat: "HH:mm", displayFormats: { minute: "HH:mm", hour: "HH:mm" } },
+            ticks: { color: "#8b949e", maxTicksLimit: 12 },
+            grid: { color: "#21262d" },
+            title: { display: true, text: "Last 4 Hours", color: "#484f58", font: { size: 11 } },
+          },
+          y: { min: yMin, max: yMax,
+            ticks: { color: "#8b949e", stepSize: 1, callback: v => v + "\u00b0C" },
+            grid: { color: "#21262d" },
+            title: { display: true, text: "Temperature (\u00b0C)", color: "#484f58", font: { size: 11 } },
+          },
         },
-        plugins: { legend: { labels: { color: "#c9d1d9" } } },
+        plugins: {
+          legend: {
+            labels: { color: "#c9d1d9", usePointStyle: true, pointStyle: "line", padding: 16 },
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}\u00b0C`,
+            },
+          },
+        },
       },
     });
   } catch (e) {}
