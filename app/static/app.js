@@ -999,7 +999,7 @@ function updateNeedleGauge(b) {
   const gFerm = ensureGauge("gauge-fermentation");
   if (gFerm) {
     const opt = gaugeBase(0, 100, Math.round(pct), "{value}%",
-      [[0.15, "#f85149"], [0.30, "#f0883e"], [0.50, "#d29922"], [0.70, "#7ee787"], [1, "#2ea043"]],
+      [[0.30, "#2ea043"], [0.50, "#7ee787"], [0.70, "#d29922"], [0.85, "#f0883e"], [1, "#f85149"]],
       "#ffffff", "rgb(88,166,255)");
     // Add inner progress track
     opt.series.push({
