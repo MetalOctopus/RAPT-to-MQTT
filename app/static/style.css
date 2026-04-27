@@ -279,6 +279,89 @@ button:disabled {
 .btn-sm {
   font-size: 0.85em;
   padding: 4px 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.reminder-form-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.reminder-form-grid .form-group {
+  min-width: 100px;
+  flex: 1;
+}
+
+.icon-picker {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.icon-pick {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0d1117;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s;
+}
+
+.icon-pick:hover {
+  border-color: #58a6ff;
+}
+
+.icon-pick.selected {
+  border-color: #58a6ff;
+  background: rgba(88,166,255,0.15);
+}
+
+.reminder-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.reminder-table th {
+  text-align: left;
+  color: #484f58;
+  font-size: 0.8em;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #21262d;
+}
+
+.reminder-table td {
+  padding: 8px;
+  border-bottom: 1px solid #161b22;
+  font-size: 0.9em;
+}
+
+.reminder-table .badge-sm {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  font-weight: 500;
+}
+
+.reminder-table .badge-sm.pending {
+  background: rgba(88,166,255,0.15);
+  color: #58a6ff;
+}
+
+.reminder-table .badge-sm.fired {
+  background: rgba(46,160,67,0.15);
+  color: #2ea043;
 }
 
 .controls span {

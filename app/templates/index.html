@@ -425,25 +425,41 @@
       <!-- Reminders -->
       <div class="panel">
         <h2>Reminders &amp; Notifications</h2>
-        <div class="reminder-form">
-          <select id="reminder-type">
-            <option value="day">On day...</option>
-            <option value="sg_stable">When SG stable for...</option>
-          </select>
-          <input type="number" id="reminder-value" placeholder="3" min="1" step="1" style="width:60px">
-          <span id="reminder-unit-label">days</span>
-          <input type="text" id="reminder-message" placeholder="Dry hop time!" style="flex:1">
-          <select id="reminder-icon" style="width:120px">
-            <option value="mdi:beer">Beer</option>
-            <option value="mdi:hops">Hops</option>
-            <option value="mdi:thermometer">Thermometer</option>
-            <option value="mdi:flask">Flask</option>
-            <option value="mdi:bell-ring">Bell</option>
-            <option value="mdi:alert">Alert</option>
-          </select>
-          <button id="btn-add-reminder" class="btn-save" style="white-space:nowrap">Add</button>
+        <div class="reminder-form-grid">
+          <div class="form-group">
+            <label for="reminder-type">When</label>
+            <select id="reminder-type">
+              <option value="day">On brew day...</option>
+              <option value="sg_stable">SG stable for...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label id="reminder-unit-label" for="reminder-value">Day</label>
+            <input type="number" id="reminder-value" placeholder="3" min="1" step="1">
+          </div>
+          <div class="form-group" style="flex:2">
+            <label for="reminder-message">Message</label>
+            <input type="text" id="reminder-message" placeholder="Time to dry hop!">
+          </div>
+          <div class="form-group">
+            <label>Icon</label>
+            <div class="icon-picker" id="icon-picker">
+              <button type="button" class="icon-pick selected" data-icon="mdi:beer" title="Beer">&#127866;</button>
+              <button type="button" class="icon-pick" data-icon="mdi:hops" title="Hops">&#127793;</button>
+              <button type="button" class="icon-pick" data-icon="mdi:thermometer" title="Temperature">&#127777;&#65039;</button>
+              <button type="button" class="icon-pick" data-icon="mdi:flask" title="Sample">&#129514;</button>
+              <button type="button" class="icon-pick" data-icon="mdi:bell-ring" title="Alert">&#128276;</button>
+              <button type="button" class="icon-pick" data-icon="mdi:alert" title="Warning">&#9888;&#65039;</button>
+              <button type="button" class="icon-pick" data-icon="mdi:check-circle" title="Done">&#9989;</button>
+              <button type="button" class="icon-pick" data-icon="mdi:cup" title="Taste">&#127867;</button>
+            </div>
+            <input type="hidden" id="reminder-icon" value="mdi:beer">
+          </div>
+          <div class="form-group" style="align-self:flex-end">
+            <button id="btn-add-reminder" class="btn-save" style="white-space:nowrap">Add Reminder</button>
+          </div>
         </div>
-        <div id="reminder-list"></div>
+        <div id="reminder-list" style="margin-top:12px"></div>
       </div>
 
       <!-- Brew Log (text-based) -->

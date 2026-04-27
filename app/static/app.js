@@ -1229,6 +1229,7 @@ function renderFeedbackStatus(b) {
   // RAPT API state — did the controller accept the change?
   const apiEl = document.getElementById("fb-api-state");
   const fbs = b.feedback_state;
+  const fmtT = v => v != null ? parseFloat(v).toFixed(1) : "--";
   if (fbs) {
     const ago = Math.round((Date.now() / 1000 - fbs.timestamp) / 60);
     const agoText = ago < 1 ? "just now" : ago + "m ago";
@@ -1236,22 +1237,22 @@ function renderFeedbackStatus(b) {
       apiEl.style.background = "rgba(46,160,67,0.1)";
       apiEl.style.border = "1px solid rgba(46,160,67,0.3)";
       apiEl.style.color = "#7ee787";
-      apiEl.textContent = `Sent ${fbs.sent_target}\u00b0C to RAPT API \u2192 confirmed at ${fbs.confirmed_target}\u00b0C (${agoText})`;
+      apiEl.textContent = `Sent ${fmtT(fbs.sent_target)}\u00b0C to RAPT API \u2192 confirmed at ${fmtT(fbs.confirmed_target)}\u00b0C (${agoText})`;
     } else if (fbs.phase === "mismatch") {
       apiEl.style.background = "rgba(210,153,34,0.1)";
       apiEl.style.border = "1px solid rgba(210,153,34,0.3)";
       apiEl.style.color = "#d29922";
-      apiEl.textContent = `Sent ${fbs.sent_target}\u00b0C to RAPT API but controller reports ${fbs.confirmed_target}\u00b0C \u2014 will retry next cycle (${agoText})`;
+      apiEl.textContent = `Sent ${fmtT(fbs.sent_target)}\u00b0C to RAPT API but controller reports ${fmtT(fbs.confirmed_target)}\u00b0C \u2014 will retry next cycle (${agoText})`;
     } else if (fbs.phase === "error") {
       apiEl.style.background = "rgba(248,81,73,0.1)";
       apiEl.style.border = "1px solid rgba(248,81,73,0.3)";
       apiEl.style.color = "#f85149";
-      apiEl.textContent = `Failed to send ${fbs.sent_target}\u00b0C to RAPT API: ${fbs.error} \u2014 will retry next cycle (${agoText})`;
+      apiEl.textContent = `Failed to send ${fmtT(fbs.sent_target)}\u00b0C to RAPT API: ${fbs.error} \u2014 will retry next cycle (${agoText})`;
     } else if (fbs.phase === "sending") {
       apiEl.style.background = "rgba(88,166,255,0.1)";
       apiEl.style.border = "1px solid rgba(88,166,255,0.3)";
       apiEl.style.color = "#58a6ff";
-      apiEl.textContent = `Sending ${fbs.sent_target}\u00b0C to RAPT API\u2026`;
+      apiEl.textContent = `Sending ${fmtT(fbs.sent_target)}\u00b0C to RAPT API\u2026`;
     } else if (fbs.phase === "stable") {
       apiEl.style.background = "rgba(46,160,67,0.06)";
       apiEl.style.border = "1px solid rgba(46,160,67,0.15)";
@@ -1261,12 +1262,14 @@ function renderFeedbackStatus(b) {
       apiEl.style.background = "rgba(210,153,34,0.1)";
       apiEl.style.border = "1px solid rgba(210,153,34,0.3)";
       apiEl.style.color = "#d29922";
-      apiEl.textContent = `Sent ${fbs.sent_target}\u00b0C to RAPT API \u2014 waiting to confirm (${agoText})`;
+      apiEl.textContent = `Sent ${fmtT(fbs.sent_target)}\u00b0C to RAPT API \u2014 waiting to confirm (${agoText})`;
     }
-    // Next check from the feedback state
+    // Next check countdown
     if (fbs.next_check) {
       const remaining = Math.max(0, fbs.next_check - Date.now() / 1000);
-      nextEl.textContent = remaining > 0 ? Math.ceil(remaining / 60) + " min" : "Any moment";
+      const remSec = Math.round(remaining);
+      const remText = remSec > 60 ? Math.ceil(remSec / 60) + " min" : remSec > 0 ? remSec + "s" : "Now";
+      nextEl.textContent = remText;
     }
   } else {
     apiEl.style.background = "";
@@ -1321,27 +1324,49 @@ function renderFeedbackStatus(b) {
     hwEl.textContent = `Feedback loop checks every ${intervalMin} min, adjusts only if delta exceeds ${deadband}\u00b0C deadband.`;
   }
 
-  // Hysteresis deadzone warning — explain when the adjustment is too small to trigger hardware
+  // Action plan — what's going to happen and when
   const hystEl = document.getElementById("feedback-hysteresis-note");
-  if (fb && ctrlTarget != null) {
+  if (beerTemp != null && targetBeer != null && ctrlTarget != null) {
     const currentCtrlTarget = parseFloat(ctrlTarget);
-    const relevantHyst = (beerTemp != null && targetBeer != null && beerTemp > targetBeer) ? coolHyst : heatHyst;
-    if (relevantHyst != null && fridgeTemp != null) {
-      const airDelta = Math.abs(parseFloat(fridgeTemp) - currentCtrlTarget);
-      if (airDelta <= relevantHyst) {
-        const action = (beerTemp > targetBeer) ? "cooling" : "heating";
-        hystEl.style.color = "#d29922";
-        hystEl.textContent = `Note: fridge air is ${parseFloat(fridgeTemp).toFixed(1)}\u00b0C and controller target is ${currentCtrlTarget.toFixed(1)}\u00b0C \u2014 ` +
-          `a delta of only ${airDelta.toFixed(1)}\u00b0C, which is within ${ctrlName}'s ${action} hysteresis of ${relevantHyst}\u00b0C. ` +
-          `The compressor/heater will not fire until the air drifts further from target. ` +
-          `The next feedback cycle will push the target further if the beer is still off.`;
-      } else {
-        hystEl.style.color = "#484f58";
-        hystEl.textContent = "";
-      }
+    const err = beerTemp - targetBeer;
+    const absErr = Math.abs(err);
+    const needsCool = err > deadband;
+    const needsHeat = err < -deadband;
+    const relevantHyst = needsCool ? coolHyst : heatHyst;
+    const action = needsCool ? "cool" : "heat";
+    const gain = b.temp_feedback_gain || 1.5;
+    const nextTarget = Math.round((targetBeer + (targetBeer - beerTemp) * gain) * 10) / 10;
+    const nextTargetClamped = Math.max(b.temp_feedback_min || 0, Math.min(b.temp_feedback_max || 35, nextTarget));
+
+    // Time until next check
+    let countdownText = "";
+    if (fbs && fbs.next_check) {
+      const remSec = Math.max(0, Math.round(fbs.next_check - Date.now() / 1000));
+      countdownText = remSec > 60 ? `in ~${Math.ceil(remSec / 60)} minutes` : remSec > 0 ? `in ${remSec} seconds` : "any moment now";
     } else {
-      hystEl.textContent = "";
+      countdownText = `in ~${intervalMin} minutes`;
     }
+
+    let plan = "";
+    if (absErr <= deadband) {
+      hystEl.style.color = "#2ea043";
+      plan = `On target. Next check ${countdownText} \u2014 if beer is still within ${deadband}\u00b0C of ${targetLabel}, no action needed.`;
+    } else {
+      // Explain hysteresis situation
+      let hystNote = "";
+      if (relevantHyst != null && fridgeTemp != null) {
+        const airDelta = Math.abs(parseFloat(fridgeTemp) - currentCtrlTarget);
+        if (airDelta <= relevantHyst) {
+          hystNote = ` Right now the fridge air (${parseFloat(fridgeTemp).toFixed(1)}\u00b0C) is only ${airDelta.toFixed(1)}\u00b0C from the controller target (${currentCtrlTarget.toFixed(1)}\u00b0C) \u2014 within the ${relevantHyst}\u00b0C ${action}ing hysteresis, so the compressor won't fire yet.`;
+        }
+      }
+
+      hystEl.style.color = "#58a6ff";
+      plan = `Next check ${countdownText}: beer is ${absErr.toFixed(1)}\u00b0C ${needsCool ? "above" : "below"} target. ` +
+        `Plan is to set ${ctrlName} to ~${nextTargetClamped.toFixed(1)}\u00b0C ` +
+        `(${needsCool ? "lower" : "higher"} to ${action} the liquid faster).${hystNote}`;
+    }
+    hystEl.textContent = plan;
   } else {
     hystEl.textContent = "";
   }
@@ -1382,23 +1407,35 @@ function renderBrewLog(events, startedAt) {
   }).join("");
 }
 
+const mdiEmoji = {
+  "mdi:beer": "\ud83c\udf7a", "mdi:hops": "\ud83c\udf31", "mdi:thermometer": "\ud83c\udf21\ufe0f",
+  "mdi:flask": "\ud83e\uddea", "mdi:bell-ring": "\ud83d\udd14", "mdi:alert": "\u26a0\ufe0f",
+  "mdi:check-circle": "\u2705", "mdi:cup": "\ud83c\udf7b",
+};
+
 function renderReminders(reminders, sessionId) {
   const el = document.getElementById("reminder-list");
   if (!reminders.length) {
-    el.innerHTML = '<div class="help-text" style="margin-top:8px">No reminders set.</div>';
+    el.innerHTML = '<div class="help-text">No reminders set. Add one above to get notified at key moments during your brew.</div>';
     return;
   }
-  el.innerHTML = reminders.map(r => {
-    const typeLabel = r.reminder_type === "day" ? `Day ${r.trigger_value}` : `SG stable ${r.trigger_value}d`;
-    const status = r.fired ? '<span class="badge-sm fired">Fired</span>' : '<span class="badge-sm pending">Pending</span>';
-    return `<div class="reminder-item">
-      ${status}
-      <span class="reminder-trigger">${typeLabel}</span>
-      <span class="reminder-msg">${esc(r.message)}</span>
-      <span class="reminder-icon">${esc(r.icon)}</span>
-      ${!r.fired ? `<button class="btn-tiny btn-stop" onclick="deleteReminder('${sessionId}', ${r.id})">x</button>` : ''}
-    </div>`;
-  }).join("");
+  let html = '<table class="reminder-table"><thead><tr>';
+  html += '<th>Status</th><th>Trigger</th><th>Message</th><th></th>';
+  html += '</tr></thead><tbody>';
+  reminders.forEach(r => {
+    const typeLabel = r.reminder_type === "day" ? `On day ${r.trigger_value}` : `SG stable ${r.trigger_value} days`;
+    const status = r.fired ? '<span class="badge-sm fired">Sent</span>' : '<span class="badge-sm pending">Waiting</span>';
+    const icon = mdiEmoji[r.icon] || "\ud83c\udf7a";
+    const del = !r.fired ? `<button class="btn-tiny btn-stop" onclick="deleteReminder('${sessionId}', ${r.id})">\u00d7</button>` : '';
+    html += `<tr>
+      <td>${status}</td>
+      <td>${typeLabel}</td>
+      <td>${icon} ${esc(r.message)}</td>
+      <td>${del}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
 }
 
 async function deleteReminder(sessionId, reminderId) {
@@ -1433,7 +1470,16 @@ document.getElementById("btn-add-reminder").addEventListener("click", async () =
 
 // Reminder unit label toggle
 document.getElementById("reminder-type").addEventListener("change", (e) => {
-  document.getElementById("reminder-unit-label").textContent = e.target.value === "day" ? "days" : "days stable";
+  document.getElementById("reminder-unit-label").textContent = e.target.value === "day" ? "Day" : "Days stable";
+});
+
+// Icon picker
+document.getElementById("icon-picker").addEventListener("click", (e) => {
+  const btn = e.target.closest(".icon-pick");
+  if (!btn) return;
+  document.querySelectorAll(".icon-pick").forEach(b => b.classList.remove("selected"));
+  btn.classList.add("selected");
+  document.getElementById("reminder-icon").value = btn.dataset.icon;
 });
 
 /* Edit OG and Target Temp inline */
@@ -1579,8 +1625,8 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
     datasets.push({
       label: "Beer Temp (\u00b0C)",
       data: pts,
-      borderColor: "#f0883e", backgroundColor: "#f0883e33",
-      borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: "y",
+      borderColor: "#f0883e",
+      borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false, yAxisID: "y",
     });
   }
   if (results.fridgeTemp?.length) {
@@ -1589,8 +1635,8 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
     datasets.push({
       label: "Fridge Temp (\u00b0C)",
       data: pts,
-      borderColor: "#58a6ff", backgroundColor: "#58a6ff33",
-      borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: "y",
+      borderColor: "#58a6ff",
+      borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false, yAxisID: "y",
     });
   }
   if (results.fridgeTarget?.length) {
@@ -1598,7 +1644,7 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
       label: "Fridge Target (\u00b0C)",
       data: mapPts(results.fridgeTarget),
       borderColor: "#2ea043",
-      borderWidth: 1, borderDash: [5, 5], pointRadius: 0, yAxisID: "y",
+      borderWidth: 1, borderDash: [5, 5], pointRadius: 0, fill: false, yAxisID: "y",
     });
   }
   if (results.sg?.length) {
@@ -1608,8 +1654,8 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
     datasets.push({
       label: "Specific Gravity",
       data: pts,
-      borderColor: "#c9d1d9", backgroundColor: "rgba(201,209,217,0.1)",
-      borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: "y1",
+      borderColor: "#c9d1d9",
+      borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false, yAxisID: "y1",
     });
   }
 
