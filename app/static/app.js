@@ -1321,6 +1321,35 @@ function renderFeedbackStatus(b) {
     hwEl.textContent = `Feedback loop checks every ${intervalMin} min, adjusts only if delta exceeds ${deadband}\u00b0C deadband.`;
   }
 
+  // Hysteresis deadzone warning — explain when the adjustment is too small to trigger hardware
+  const hystEl = document.getElementById("feedback-hysteresis-note");
+  if (fb && ctrlTarget != null) {
+    const currentCtrlTarget = parseFloat(ctrlTarget);
+    const relevantHyst = (beerTemp != null && targetBeer != null && beerTemp > targetBeer) ? coolHyst : heatHyst;
+    if (relevantHyst != null && fridgeTemp != null) {
+      const airDelta = Math.abs(parseFloat(fridgeTemp) - currentCtrlTarget);
+      if (airDelta <= relevantHyst) {
+        const action = (beerTemp > targetBeer) ? "cooling" : "heating";
+        hystEl.style.color = "#d29922";
+        hystEl.textContent = `Note: fridge air is ${parseFloat(fridgeTemp).toFixed(1)}\u00b0C and controller target is ${currentCtrlTarget.toFixed(1)}\u00b0C \u2014 ` +
+          `a delta of only ${airDelta.toFixed(1)}\u00b0C, which is within ${ctrlName}'s ${action} hysteresis of ${relevantHyst}\u00b0C. ` +
+          `The compressor/heater will not fire until the air drifts further from target. ` +
+          `The next feedback cycle will push the target further if the beer is still off.`;
+      } else {
+        hystEl.style.color = "#484f58";
+        hystEl.textContent = "";
+      }
+    } else {
+      hystEl.textContent = "";
+    }
+  } else {
+    hystEl.textContent = "";
+  }
+
+  // Populate "how it works" dynamic hardware values
+  setIfExists("how-cool-hyst", coolHyst != null ? coolHyst : "0.5");
+  setIfExists("how-heat-hyst", heatHyst != null ? heatHyst : "0.3");
+  setIfExists("how-comp-delay", compDelay != null ? compDelay : "5");
 }
 
 function renderBrewLog(events, startedAt) {

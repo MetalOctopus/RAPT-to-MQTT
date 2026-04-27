@@ -393,29 +393,32 @@
           <div id="fb-api-state" style="margin-bottom:12px;padding:10px 14px;border-radius:8px;font-size:0.9em;line-height:1.5"></div>
           <p id="feedback-narrative" style="margin:0 0 12px 0;line-height:1.6;color:#8b949e;font-size:0.9em"></p>
           <p id="feedback-hardware-note" style="margin:0 0 12px 0;line-height:1.5;color:#484f58;font-size:0.8em"></p>
-        </div>
-        <details class="feedback-how-it-works" style="margin-top:12px">
-          <summary style="cursor:pointer;color:#58a6ff;font-size:0.9em;font-weight:500">How does this work?</summary>
-          <div style="margin-top:10px;line-height:1.7;color:#8b949e;font-size:0.85em">
-            <p><strong>The problem:</strong> Your temperature controller has a probe sitting in the fridge air. When you set it to 17.5&deg;C, it heats or cools until the <em>air</em> reaches 17.5&deg;C and then stops. But beer has far more thermal mass than air &mdash; 20 litres of liquid changes temperature much slower than the air around it. The controller thinks it's done while your beer is still degrees off target. It can take days to naturally equilibriate.</p>
+          <p id="feedback-hysteresis-note" style="margin:0 0 12px 0;line-height:1.5;color:#484f58;font-size:0.8em"></p>
+          <details class="feedback-how-it-works" style="margin-top:12px">
+            <summary style="cursor:pointer;color:#58a6ff;font-size:0.9em;font-weight:500">How does this work?</summary>
+            <div style="margin-top:10px;line-height:1.7;color:#8b949e;font-size:0.85em">
+              <p><strong>The problem:</strong> Your temperature controller has a probe sitting in the fridge air. When you set it to 17.5&deg;C, it heats or cools until the <em>air</em> reaches 17.5&deg;C and then stops. But beer has far more thermal mass than air &mdash; 20 litres of liquid changes temperature much slower than the air around it. The controller thinks it's done while your beer is still degrees off target. It can take days to naturally equilibriate.</p>
 
-            <p><strong>The solution:</strong> Your hydrometer (e.g. TILT) is floating <em>inside</em> the beer. It knows the actual liquid temperature. We use that as the source of truth and adjust the controller's target to compensate for the difference.</p>
+              <p><strong>The solution:</strong> Your hydrometer (e.g. TILT) is floating <em>inside</em> the beer. It knows the actual liquid temperature. We use that as the source of truth and adjust the controller's target to compensate for the difference.</p>
 
-            <p><strong>The maths:</strong> Every <span id="how-interval">5</span> minutes, we calculate:</p>
-            <ul style="margin:4px 0 8px 16px;padding:0">
-              <li><strong>Error</strong> = your beer target &minus; actual beer temp (from hydrometer)</li>
-              <li><strong>Adjustment</strong> = error &times; <span id="how-gain">1.5</span> (gain)</li>
-              <li><strong>New controller target</strong> = your beer target + adjustment</li>
-            </ul>
-            <p>So if your beer target is 17.5&deg;C and the hydrometer reads 19.2&deg;C, the error is &minus;1.7&deg;C. Multiply by <span id="how-gain2">1.5</span> gain = &minus;2.55&deg;C adjustment. The controller target gets set to 15.0&deg;C &mdash; deliberately overshooting cold to pull the liquid down faster. As the beer approaches 17.5&deg;C, the error shrinks, the overshoot shrinks, and the controller target converges back to 17.5&deg;C. We also clamp to safe bounds (<span id="how-min">0</span>&ndash;<span id="how-max">35</span>&deg;C) and only send an update if the change exceeds <span id="how-deadband">0.3</span>&deg;C (deadband), to avoid hammering the RAPT API with micro-adjustments.</p>
+              <p><strong>The maths:</strong> Every <span id="how-interval">5</span> minutes, we calculate:</p>
+              <ul style="margin:4px 0 8px 16px;padding:0">
+                <li><strong>Error</strong> = your beer target &minus; actual beer temp (from hydrometer)</li>
+                <li><strong>Adjustment</strong> = error &times; <span id="how-gain">1.5</span> (gain)</li>
+                <li><strong>New controller target</strong> = your beer target + adjustment</li>
+              </ul>
+              <p>So if your beer target is 17.5&deg;C and the hydrometer reads 19.2&deg;C, the error is &minus;1.7&deg;C. Multiply by <span id="how-gain2">1.5</span> gain = &minus;2.55&deg;C adjustment. The controller target gets set to 15.0&deg;C &mdash; deliberately overshooting cold to pull the liquid down faster. As the beer approaches 17.5&deg;C, the error shrinks, the overshoot shrinks, and the controller target converges back to 17.5&deg;C. We also clamp to safe bounds (<span id="how-min">0</span>&ndash;<span id="how-max">35</span>&deg;C) and only send an update if the change exceeds <span id="how-deadband">0.3</span>&deg;C (deadband), to avoid hammering the RAPT API with micro-adjustments.</p>
 
-            <p><strong>Why not learn a calibration constant?</strong> A static offset between fridge air and beer liquid would be simpler, but it doesn't work in practice. The relationship changes constantly &mdash; it depends on fermentation activity (yeast generate heat), ambient temperature, how full the fridge is, the volume and surface area of the fermenter, whether the door was opened, and even the beer's specific gravity. A calibration constant learned from one brew would be wrong for the next, and wrong within the same brew as conditions change. Instead, we measure the <em>actual error right now</em> and correct for it every <span id="how-interval2">5</span> minutes. This is standard proportional servo control &mdash; the same approach used in industrial process control, HVAC systems, and PID loops everywhere. We just skip the I (integral) and D (derivative) terms because the 5-minute sample rate and the controller's own hardware delays (compressor cooldown, hysteresis) make them more likely to cause oscillation than help.</p>
+              <p><strong>Why the overshoot matters &mdash; the hysteresis deadzone:</strong> Your controller has a hysteresis setting (e.g. cooling hysteresis of <span id="how-cool-hyst">0.5</span>&deg;C). This means the compressor won't kick in until the air temperature rises <em>above</em> the target by that amount. If we set the controller target to exactly your beer target (17.5&deg;C), and the fridge air is already sitting at 17.4&deg;C, the compressor will never fire &mdash; the air is within hysteresis, so the controller thinks everything is fine, even though the liquid is still 19&deg;C. By overshooting the target <em>lower</em> (e.g. 15.0&deg;C), we ensure the air temperature is far enough above the controller's target to actually trigger a cooling cycle. The gain multiplier is what creates this overshoot &mdash; the bigger the error, the further we push past target to guarantee the hardware acts.</p>
 
-            <p><strong>Your controller's own limits still apply.</strong> If it has a compressor cooldown of 5 minutes, it physically cannot start a new cooling cycle faster than that. If it has a heating hysteresis of 0.3&deg;C, it won't kick in until the air drifts that far below target. We can't override these &mdash; they're hardware safety limits set in the RAPT Portal. What we <em>can</em> do is make sure the target the controller is chasing actually reflects where the beer needs to be, not just where the air is.</p>
+              <p><strong>Why not learn a calibration constant?</strong> A static offset between fridge air and beer liquid would be simpler, but it doesn't work in practice. The relationship changes constantly &mdash; it depends on fermentation activity (yeast generate heat), ambient temperature, how full the fridge is, the volume and surface area of the fermenter, whether the door was opened, and even the beer's specific gravity. A calibration constant learned from one brew would be wrong for the next, and wrong within the same brew as conditions change. Instead, we measure the <em>actual error right now</em> and correct for it every <span id="how-interval2">5</span> minutes. This is standard proportional servo control &mdash; the same approach used in industrial process control, HVAC systems, and PID loops everywhere. We just skip the I (integral) and D (derivative) terms because the 5-minute sample rate and the controller's own hardware delays (compressor cooldown, hysteresis) make them more likely to cause oscillation than help.</p>
+
+              <p><strong>Your controller's own limits still apply.</strong> If it has a compressor cooldown of <span id="how-comp-delay">5</span> minutes, it physically cannot start a new cooling cycle faster than that. If it has a heating hysteresis of <span id="how-heat-hyst">0.3</span>&deg;C, it won't kick in until the air drifts that far below target. We can't override these &mdash; they're hardware safety limits set in the <a href="https://app.rapt.io" target="_blank" rel="noopener" style="color:#58a6ff">RAPT Portal</a>. What we <em>can</em> do is make sure the target the controller is chasing actually reflects where the beer needs to be, not just where the air is.</p>
+            </div>
+          </details>
+          <div class="chart-container" style="margin-top:12px">
+            <canvas id="feedback-chart"></canvas>
           </div>
-        </details>
-        <div class="chart-container" style="margin-top:12px">
-          <canvas id="feedback-chart"></canvas>
         </div>
       </div>
 
