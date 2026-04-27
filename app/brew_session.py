@@ -146,6 +146,7 @@ class BrewSession:
             sg = tilt.get("specificGravity")
             session["current_sg"] = sg
             session["beer_temp"] = tilt.get("temperature")
+            session["tilt_name"] = tilt.get("name", "Hydrometer")
             if sg and session.get("og"):
                 session["current_abv"] = round((session["og"] - sg) * 131.25, 2)
 
@@ -154,6 +155,7 @@ class BrewSession:
             ctrl = devices[ctrl_id]
             session["fridge_temp"] = ctrl.get("temperature")
             session["controller_target"] = ctrl.get("targetTemperature")
+            session["controller_name"] = ctrl.get("name", "Controller")
 
         session["events"] = self._history.get_events(session["id"])
         session["reminders"] = self._history.get_reminders(session["id"])

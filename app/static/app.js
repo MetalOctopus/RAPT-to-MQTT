@@ -908,6 +908,21 @@ function renderBrewDetail(b) {
   // Needle gauge
   updateNeedleGauge(b);
 
+  // Feedback description
+  const sourceLabelsLong = { hydrometer: "Hydrometer", controller: "Controller probe", mean: "Mean of Hydrometer + Controller" };
+  const srcName = sourceLabelsLong[b.temp_source] || "Hydrometer";
+  const srcDevice = b.tilt_name || b.controller_name || "your sensor";
+  const ctrlName = b.controller_name || "the temperature controller";
+  const targetLabel = b.target_beer_temp != null ? b.target_beer_temp + "\u00b0C" : "your target";
+  const descEl = document.getElementById("feedback-description");
+  if (b.temp_source === "controller") {
+    descEl.textContent = `Enable this and we will use ${ctrlName}'s probe to automatically adjust ${ctrlName}'s target temperature, such that the probe reading matches your beer target of ${targetLabel}.`;
+  } else if (b.temp_source === "mean") {
+    descEl.textContent = `Enable this and we will use the mean of ${b.tilt_name || "the hydrometer"} and ${ctrlName}'s probe to automatically adjust ${ctrlName}'s target temperature, such that the averaged reading matches your beer target of ${targetLabel}.`;
+  } else {
+    descEl.textContent = `Enable this and we will use ${b.tilt_name || "the hydrometer"} (${srcName}, in-liquid) to automatically adjust ${ctrlName}'s target temperature, such that the ${b.tilt_name || "hydrometer"} reading matches your beer target of ${targetLabel}.`;
+  }
+
   // Feedback status
   const fbEnabled = b.temp_feedback_enabled;
   document.getElementById("btn-feedback-start").disabled = fbEnabled;
