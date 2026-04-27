@@ -442,7 +442,8 @@ class RaptBridge:
         self._set_temperature_for_device(target, device_id)
 
     def _set_temperature_for_device(self, target, device_id):
-        """Set target temperature on a specific RAPT controller."""
+        """Set target temperature on a specific RAPT controller.
+        Returns dict with sent/confirmed values, or None on failure."""
         url = f"{self.API_ENDPOINT}TemperatureControllers/SetTargetTemperature"
         payload = {
             "temperatureControllerId": device_id,
@@ -450,10 +451,27 @@ class RaptBridge:
         }
 
         self._logger.info(f"Setting target temperature to {target}\u00b0C...")
-        r = requests.post(url, data=payload, headers=self._headers)
-        r.raise_for_status()
-        response = r.json()
-        self._logger.info(f"Set temperature response: {response}")
+        try:
+            r = requests.post(url, data=payload, headers=self._headers)
+            r.raise_for_status()
+            response = r.json()
+            self._logger.info(f"RAPT API accepted: {response}")
+        except Exception as e:
+            self._logger.error(f"RAPT API rejected target {target}\u00b0C: {e}")
+            return {"sent": target, "confirmed": None, "error": str(e)}
 
         time.sleep(5)
         self._update_mqtt()
+
+        # Verify the controller actually took the new value
+        with self._devices_lock:
+            ctrl = self._devices.get(device_id)
+        confirmed = ctrl.get("targetTemperature") if ctrl else None
+        if confirmed is not None and abs(confirmed - target) <= 0.15:
+            self._logger.info(f"Confirmed: controller target is now {confirmed}\u00b0C")
+            return {"sent": target, "confirmed": confirmed, "error": None}
+        else:
+            self._logger.warning(
+                f"Sent {target}\u00b0C but controller reports {confirmed}\u00b0C"
+            )
+            return {"sent": target, "confirmed": confirmed, "error": None}

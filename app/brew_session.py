@@ -177,6 +177,11 @@ class BrewSession:
                 "adjustment": last["adjustment"],
             }
 
+        # Live feedback state from the running loop
+        live_session = self._active_sessions.get(session["id"])
+        if live_session:
+            session["feedback_state"] = live_session.get("_feedback_state")
+
         session["events"] = self._history.get_events(session["id"])
         session["reminders"] = self._history.get_reminders(session["id"])
         return session
@@ -293,7 +298,47 @@ class BrewSession:
                         f"error={error:+.1f}\u00b0C | "
                         f"fridge {current_target}\u00b0C \u2192 {new_target}\u00b0C"
                     )
-                    self._bridge.set_target_temperature(new_target, ctrl_id)
+                    # Track state: requesting change from RAPT API
+                    session["_feedback_state"] = {
+                        "phase": "sending",
+                        "sent_target": new_target,
+                        "old_target": current_target,
+                        "timestamp": time.time(),
+                    }
+                    result = self._bridge.set_target_temperature(new_target, ctrl_id)
+                    if result and result.get("error"):
+                        session["_feedback_state"] = {
+                            "phase": "error",
+                            "sent_target": new_target,
+                            "old_target": current_target,
+                            "error": result["error"],
+                            "timestamp": time.time(),
+                        }
+                    elif result and result.get("confirmed") is not None:
+                        confirmed = result["confirmed"]
+                        if abs(confirmed - new_target) <= 0.15:
+                            session["_feedback_state"] = {
+                                "phase": "confirmed",
+                                "sent_target": new_target,
+                                "confirmed_target": confirmed,
+                                "old_target": current_target,
+                                "timestamp": time.time(),
+                            }
+                        else:
+                            session["_feedback_state"] = {
+                                "phase": "mismatch",
+                                "sent_target": new_target,
+                                "confirmed_target": confirmed,
+                                "old_target": current_target,
+                                "timestamp": time.time(),
+                            }
+                    else:
+                        session["_feedback_state"] = {
+                            "phase": "unconfirmed",
+                            "sent_target": new_target,
+                            "old_target": current_target,
+                            "timestamp": time.time(),
+                        }
                     self._history.log_temp_feedback(
                         session["id"], beer_temp, fridge_temp, target_beer,
                         current_target, new_target, error, adjustment
@@ -303,8 +348,13 @@ class BrewSession:
                         f"Feedback: beer={beer_temp}\u00b0C (target {target_beer}\u00b0C) "
                         f"- within deadband, no adjustment"
                     )
+                    session["_feedback_state"] = {
+                        "phase": "stable",
+                        "timestamp": time.time(),
+                    }
 
                 interval = session.get("temp_feedback_interval", 300)
+                session["_feedback_state"]["next_check"] = time.time() + interval
                 stop_event.wait(timeout=interval)
 
             except Exception as e:

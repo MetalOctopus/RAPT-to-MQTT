@@ -1226,6 +1226,55 @@ function renderFeedbackStatus(b) {
     actionEl.textContent = "No adjustments yet";
   }
 
+  // RAPT API state — did the controller accept the change?
+  const apiEl = document.getElementById("fb-api-state");
+  const fbs = b.feedback_state;
+  if (fbs) {
+    const ago = Math.round((Date.now() / 1000 - fbs.timestamp) / 60);
+    const agoText = ago < 1 ? "just now" : ago + "m ago";
+    if (fbs.phase === "confirmed") {
+      apiEl.style.background = "rgba(46,160,67,0.1)";
+      apiEl.style.border = "1px solid rgba(46,160,67,0.3)";
+      apiEl.style.color = "#7ee787";
+      apiEl.textContent = `Sent ${fbs.sent_target}\u00b0C to RAPT API \u2192 confirmed at ${fbs.confirmed_target}\u00b0C (${agoText})`;
+    } else if (fbs.phase === "mismatch") {
+      apiEl.style.background = "rgba(210,153,34,0.1)";
+      apiEl.style.border = "1px solid rgba(210,153,34,0.3)";
+      apiEl.style.color = "#d29922";
+      apiEl.textContent = `Sent ${fbs.sent_target}\u00b0C to RAPT API but controller reports ${fbs.confirmed_target}\u00b0C \u2014 will retry next cycle (${agoText})`;
+    } else if (fbs.phase === "error") {
+      apiEl.style.background = "rgba(248,81,73,0.1)";
+      apiEl.style.border = "1px solid rgba(248,81,73,0.3)";
+      apiEl.style.color = "#f85149";
+      apiEl.textContent = `Failed to send ${fbs.sent_target}\u00b0C to RAPT API: ${fbs.error} \u2014 will retry next cycle (${agoText})`;
+    } else if (fbs.phase === "sending") {
+      apiEl.style.background = "rgba(88,166,255,0.1)";
+      apiEl.style.border = "1px solid rgba(88,166,255,0.3)";
+      apiEl.style.color = "#58a6ff";
+      apiEl.textContent = `Sending ${fbs.sent_target}\u00b0C to RAPT API\u2026`;
+    } else if (fbs.phase === "stable") {
+      apiEl.style.background = "rgba(46,160,67,0.06)";
+      apiEl.style.border = "1px solid rgba(46,160,67,0.15)";
+      apiEl.style.color = "#484f58";
+      apiEl.textContent = `Within deadband \u2014 no adjustment sent to RAPT API (${agoText})`;
+    } else if (fbs.phase === "unconfirmed") {
+      apiEl.style.background = "rgba(210,153,34,0.1)";
+      apiEl.style.border = "1px solid rgba(210,153,34,0.3)";
+      apiEl.style.color = "#d29922";
+      apiEl.textContent = `Sent ${fbs.sent_target}\u00b0C to RAPT API \u2014 waiting to confirm (${agoText})`;
+    }
+    // Next check from the feedback state
+    if (fbs.next_check) {
+      const remaining = Math.max(0, fbs.next_check - Date.now() / 1000);
+      nextEl.textContent = remaining > 0 ? Math.ceil(remaining / 60) + " min" : "Any moment";
+    }
+  } else {
+    apiEl.style.background = "";
+    apiEl.style.border = "1px solid #21262d";
+    apiEl.style.color = "#484f58";
+    apiEl.textContent = "Waiting for first feedback cycle\u2026";
+  }
+
   // Narrative — the human-readable "what's happening right now"
   const narEl = document.getElementById("feedback-narrative");
   let narrative = "";
