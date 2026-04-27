@@ -4,6 +4,7 @@ import queue
 import time
 import logging
 import logging.handlers
+import threading
 
 from flask import Flask, render_template, request, jsonify, Response
 
@@ -49,6 +50,19 @@ brew = BrewSession(history=history, bridge=bridge, logger=logger)
 if is_configured(config) and config.get("auto_start", True):
     logger.info("Auto-starting bridge (config found)...")
     bridge.start()
+
+
+# Periodic DB pruning (daily, 7-day retention)
+def _prune_loop():
+    while True:
+        try:
+            history.prune()
+            logger.info("Database pruned (7-day retention)")
+        except Exception as e:
+            logger.error(f"Prune error: {e}")
+        time.sleep(86400)
+
+threading.Thread(target=_prune_loop, daemon=True).start()
 
 
 @app.route("/")

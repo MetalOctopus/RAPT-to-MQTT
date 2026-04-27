@@ -1018,6 +1018,11 @@ document.getElementById("btn-add-reminder").addEventListener("click", async () =
   } catch (e) { showToast("Failed", "error"); }
 });
 
+// Reminder unit label toggle
+document.getElementById("reminder-type").addEventListener("change", (e) => {
+  document.getElementById("reminder-unit-label").textContent = e.target.value === "day" ? "days" : "days stable";
+});
+
 /* Edit OG and Target Temp inline */
 function editBrewOG() {
   if (!currentBrewId) return;
@@ -1122,7 +1127,7 @@ async function autoPopulateBrewChart(brew) {
   };
   if (hasSG) {
     scales.y1 = { position: "right", title: { display: true, text: "Specific Gravity", color: "#8b949e" },
-                  ticks: { color: "#8b949e" }, grid: { drawOnChartArea: false } };
+                  ticks: { color: "#8b949e", callback: v => Math.round(v) }, grid: { drawOnChartArea: false } };
   }
 
   const ctx = document.getElementById("brew-chart").getContext("2d");

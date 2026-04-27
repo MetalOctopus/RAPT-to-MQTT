@@ -211,19 +211,20 @@ class RaptBridge:
             with self._devices_lock:
                 self._devices[device_id] = device
 
-            # Only record to history when temp, SG, or RSSI bucket actually changes
-            rssi_bucket = self._rssi_bucket(rssi)
+            # Record to history: require value change AND 60s minimum interval
+            # (RSSI bounces wildly across buckets; don't let it flood the DB)
             last = self._tilt_last.get(device_id, {})
+            now = time.time()
+            elapsed = now - last.get("time", 0)
 
-            temp_changed = abs(temp_c - last.get("temp", float("inf"))) > 0.05
-            sg_changed = abs(sg - last.get("sg", float("inf"))) > 0.0002
-            rssi_changed = rssi_bucket != last.get("rssi_bucket", -1)
+            temp_changed = abs(temp_c - last.get("temp", float("inf"))) > 0.1
+            sg_changed = abs(sg - last.get("sg", float("inf"))) > 0.0005
 
-            if temp_changed or sg_changed or rssi_changed:
+            if (temp_changed or sg_changed) and elapsed >= 60:
                 self._tilt_last[device_id] = {
                     "temp": temp_c,
                     "sg": sg,
-                    "rssi_bucket": rssi_bucket,
+                    "time": now,
                 }
 
                 self._logger.info(
