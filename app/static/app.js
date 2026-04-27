@@ -351,6 +351,19 @@ function renderDevice(dev) {
   document.getElementById("row-sensor").style.display = isTilt ? "none" : "";
   document.getElementById("row-telemetry").style.display = isTilt ? "none" : "";
 
+  // Manage link and source hint
+  const manageRow = document.getElementById("row-manage-link");
+  const manageCell = document.getElementById("info-manage-link");
+  const sourceHint = document.getElementById("device-source-hint");
+  if (isTilt) {
+    manageRow.style.display = "none";
+    sourceHint.textContent = "Device name and color come from TILT firmware. Beer name is set in TiltPi.";
+  } else {
+    manageRow.style.display = "";
+    manageCell.innerHTML = '<a href="https://app.rapt.io" target="_blank" rel="noopener">Manage in RAPT Portal</a>';
+    sourceHint.textContent = "Device name, target temperature, and settings are managed through the RAPT Portal. RAPT2MQTT reads and works alongside the RAPT API \u2014 it doesn\u2019t replace it.";
+  }
+
   const lastActivity = dev.lastActivityTime || dev._last_seen;
   if (lastActivity) {
     document.getElementById("info-last-activity").textContent =
@@ -915,12 +928,13 @@ function renderBrewDetail(b) {
   const ctrlName = b.controller_name || "the temperature controller";
   const targetLabel = b.target_beer_temp != null ? b.target_beer_temp + "\u00b0C" : "your target";
   const descEl = document.getElementById("feedback-description");
+  const viaApi = " Adjustments are made via the RAPT API \u2014 your controller settings in the RAPT Portal stay in sync.";
   if (b.temp_source === "controller") {
-    descEl.textContent = `Enable this and we will use ${ctrlName}'s probe to automatically adjust ${ctrlName}'s target temperature, such that the probe reading matches your beer target of ${targetLabel}.`;
+    descEl.textContent = `Enable this and we will use ${ctrlName}'s probe to automatically adjust ${ctrlName}'s target temperature, such that the probe reading matches your beer target of ${targetLabel}.` + viaApi;
   } else if (b.temp_source === "mean") {
-    descEl.textContent = `Enable this and we will use the mean of ${b.tilt_name || "the hydrometer"} and ${ctrlName}'s probe to automatically adjust ${ctrlName}'s target temperature, such that the averaged reading matches your beer target of ${targetLabel}.`;
+    descEl.textContent = `Enable this and we will use the mean of ${b.tilt_name || "the hydrometer"} and ${ctrlName}'s probe to automatically adjust ${ctrlName}'s target temperature, such that the averaged reading matches your beer target of ${targetLabel}.` + viaApi;
   } else {
-    descEl.textContent = `Enable this and we will use ${b.tilt_name || "the hydrometer"} (${srcName}, in-liquid) to automatically adjust ${ctrlName}'s target temperature, such that the ${b.tilt_name || "hydrometer"} reading matches your beer target of ${targetLabel}.`;
+    descEl.textContent = `Enable this and we will use ${b.tilt_name || "the hydrometer"} (${srcName}, in-liquid) to automatically adjust ${ctrlName}'s target temperature, such that the ${b.tilt_name || "hydrometer"} reading matches your beer target of ${targetLabel}.` + viaApi;
   }
 
   // Feedback status
