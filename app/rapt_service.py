@@ -455,23 +455,26 @@ class RaptBridge:
             r = requests.post(url, data=payload, headers=self._headers)
             r.raise_for_status()
             response = r.json()
-            self._logger.info(f"RAPT API accepted: {response}")
+            self._logger.info(f"RAPT API response: {response} (HTTP {r.status_code})")
         except Exception as e:
             self._logger.error(f"RAPT API rejected target {target}\u00b0C: {e}")
             return {"sent": target, "confirmed": None, "error": str(e)}
 
-        time.sleep(5)
-        self._update_mqtt()
-
-        # Verify the controller actually took the new value
-        with self._devices_lock:
-            ctrl = self._devices.get(device_id)
-        confirmed = ctrl.get("targetTemperature") if ctrl else None
-        if confirmed is not None and abs(confirmed - target) <= 0.15:
-            self._logger.info(f"Confirmed: controller target is now {confirmed}\u00b0C")
-            return {"sent": target, "confirmed": confirmed, "error": None}
-        else:
-            self._logger.warning(
-                f"Sent {target}\u00b0C but controller reports {confirmed}\u00b0C"
+        # Re-poll with retries — RAPT firmware can take 10-15s to apply changes
+        for attempt in range(3):
+            time.sleep(5)
+            self._update_mqtt()
+            with self._devices_lock:
+                ctrl = self._devices.get(device_id)
+            confirmed = ctrl.get("targetTemperature") if ctrl else None
+            if confirmed is not None and abs(confirmed - target) <= 0.15:
+                self._logger.info(f"Confirmed: controller target is now {confirmed}\u00b0C (attempt {attempt + 1})")
+                return {"sent": target, "confirmed": confirmed, "error": None}
+            self._logger.info(
+                f"Verify attempt {attempt + 1}/3: sent {target}\u00b0C, controller reports {confirmed}\u00b0C"
             )
-            return {"sent": target, "confirmed": confirmed, "error": None}
+
+        self._logger.warning(
+            f"Sent {target}\u00b0C but controller still reports {confirmed}\u00b0C after 3 checks"
+        )
+        return {"sent": target, "confirmed": confirmed, "error": None}
