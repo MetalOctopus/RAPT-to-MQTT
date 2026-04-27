@@ -412,7 +412,7 @@ class BrewSession:
         self._history.mark_reminder_fired(reminder["id"])
         msg = reminder["message"]
         icon = reminder.get("icon", "mdi:beer")
-        title = f"{session['name']} - Alert"
+        title = session["name"]
         self._logger.info(f"Reminder fired: {title} - {msg}")
         self._bridge.publish_notification(title, msg, icon)
         self._history.add_event(session["id"], "reminder_fired", msg)
