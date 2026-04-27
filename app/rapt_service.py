@@ -213,48 +213,45 @@ class RaptBridge:
             with self._devices_lock:
                 self._devices[device_id] = device
 
-            # Count incoming messages for periodic summary
-            tilt_stats = self._tilt_last.get(device_id, {})
-            tilt_stats["rx_count"] = tilt_stats.get("rx_count", 0) + 1
-
-            # Record to history: require value change AND 60s minimum interval
+            last = self._tilt_last.get(device_id, {})
+            last["rx_count"] = last.get("rx_count", 0) + 1
             now = time.time()
-            elapsed = now - tilt_stats.get("time", 0)
 
-            temp_changed = abs(temp_c - tilt_stats.get("temp", float("inf"))) > 0.1
-            sg_changed = abs(sg - tilt_stats.get("sg", float("inf"))) > 0.0005
+            temp_changed = abs(temp_c - last.get("temp", float("inf"))) > 0.1
+            sg_changed = abs(sg - last.get("sg", float("inf"))) > 0.0005
 
-            if (temp_changed or sg_changed) and elapsed >= 60:
-                rx = tilt_stats.get("rx_count", 1)
+            # Temp/SG: record immediately on change — no time gate
+            if temp_changed or sg_changed:
+                rx = last.get("rx_count", 1)
+                elapsed = now - last.get("time", 0)
                 reason = []
                 if temp_changed:
-                    reason.append(f"temp {tilt_stats.get('temp', '?')}\u2192{temp_c}")
+                    reason.append(f"temp {last.get('temp', '?')}\u2192{temp_c}")
                 if sg_changed:
-                    reason.append(f"SG {round(tilt_stats.get('sg', 0) * 1000)}\u2192{round(sg * 1000)}")
+                    reason.append(f"SG {round(last.get('sg', 0) * 1000)}\u2192{round(sg * 1000)}")
 
-                self._tilt_last[device_id] = {
-                    "temp": temp_c,
-                    "sg": sg,
-                    "time": now,
-                    "rx_count": 0,
-                }
-
-                rssi_lbl = self._rssi_bucket(rssi)
                 self._logger.info(
                     f"TILT {color} | {temp_c}\u00b0C ({temp_f}\u00b0F) | "
-                    f"SG: {round(sg * 1000)} | RSSI: {rssi} dBm (L{rssi_lbl}) | "
+                    f"SG: {round(sg * 1000)} | "
                     f"Recorded ({', '.join(reason)}) [{rx} msgs/{elapsed:.0f}s]"
                 )
 
+                last.update({"temp": temp_c, "sg": sg, "time": now, "rx_count": 0})
                 if self._history:
                     self._history.record(device_id, {
                         "temperature": temp_c,
                         "temperature_f": temp_f,
                         "specificGravity": sg * 1000,
-                        "rssi": rssi if rssi else None,
                     })
-            else:
-                self._tilt_last[device_id] = tilt_stats
+
+            # RSSI: record on its own lazy timer (every 5 min)
+            rssi_elapsed = now - last.get("rssi_time", 0)
+            if rssi is not None and rssi_elapsed >= 300:
+                last["rssi_time"] = now
+                if self._history:
+                    self._history.record(device_id, {"rssi": rssi})
+
+            self._tilt_last[device_id] = last
 
         except Exception as e:
             self._logger.error(f"Error processing TILT message: {e}")
