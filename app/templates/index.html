@@ -270,12 +270,28 @@
         </div>
       </div>
 
-      <!-- Fermentation Gauge -->
-      <div class="panel">
-        <h2>Fermentation Progress</h2>
-        <div class="gauge-needle-container">
-          <div id="brew-gauge-echarts" style="width:360px;height:280px"></div>
+      <!-- Gauge Dashboard -->
+      <div class="gauge-dashboard">
+        <div class="panel gauge-panel">
+          <h2 class="gauge-title">Fermentation</h2>
+          <div id="gauge-fermentation" class="gauge-el"></div>
           <div class="gauge-abv" id="gauge-abv-display">-- ABV</div>
+          <div class="gauge-sub" id="gauge-og-sg-label">--</div>
+        </div>
+        <div class="panel gauge-panel">
+          <h2 class="gauge-title">Beer Temperature</h2>
+          <div id="gauge-beer-temp" class="gauge-el"></div>
+          <div class="gauge-sub" id="gauge-beer-target-label">--</div>
+        </div>
+        <div class="panel gauge-panel">
+          <h2 class="gauge-title">Specific Gravity</h2>
+          <div id="gauge-sg" class="gauge-el"></div>
+          <div class="gauge-sub" id="gauge-sg-label">--</div>
+        </div>
+        <div class="panel gauge-panel">
+          <h2 class="gauge-title">Fridge Controller</h2>
+          <div id="gauge-fridge" class="gauge-el"></div>
+          <div class="gauge-sub" id="gauge-fridge-label">--</div>
         </div>
       </div>
 

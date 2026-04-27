@@ -136,23 +136,34 @@ function boolText(val) {
 function rssiLabel(rssi) {
   if (rssi == null || isNaN(rssi)) return "--";
   const v = parseInt(rssi);
-  let bars, label;
-  if (v >= -40) { bars = "\u2582\u2584\u2586\u2588\u2588"; label = "Excellent"; }
-  else if (v >= -50) { bars = "\u2582\u2584\u2586\u2588"; label = "Great"; }
-  else if (v >= -60) { bars = "\u2582\u2584\u2586"; label = "Good"; }
-  else if (v >= -70) { bars = "\u2582\u2584"; label = "Fair"; }
-  else { bars = "\u2582"; label = "Weak"; }
-  return bars + "  " + label + " (" + v + " dBm)";
+  let label;
+  if (v >= -40) label = "Excellent";
+  else if (v >= -50) label = "Great";
+  else if (v >= -60) label = "Good";
+  else if (v >= -70) label = "Fair";
+  else label = "Weak";
+  return rssiIcon(rssi) + " " + label + " (" + v + " dBm)";
 }
 
 function rssiIcon(rssi) {
   if (rssi == null) return "";
   const v = parseInt(rssi);
-  if (v >= -40) return " \u2582\u2584\u2586\u2588\u2588";
-  if (v >= -50) return " \u2582\u2584\u2586\u2588";
-  if (v >= -60) return " \u2582\u2584\u2586";
-  if (v >= -70) return " \u2582\u2584";
-  return " \u2582";
+  let bars;
+  if (v >= -40) bars = 5;
+  else if (v >= -50) bars = 4;
+  else if (v >= -60) bars = 3;
+  else if (v >= -70) bars = 2;
+  else bars = 1;
+  const heights = [4, 7, 10, 13, 16];
+  let svg = '<svg viewBox="0 0 20 16" width="18" height="14" class="rssi-bars" style="vertical-align:middle;margin-left:5px">';
+  for (let i = 0; i < 5; i++) {
+    const h = heights[i];
+    const x = i * 4;
+    const fill = i < bars ? "#58a6ff" : "#30363d";
+    svg += `<rect x="${x}" y="${16 - h}" width="3" height="${h}" rx="0.5" fill="${fill}"/>`;
+  }
+  svg += "</svg>";
+  return svg;
 }
 
 function timeAgo(isoStr) {
@@ -268,7 +279,7 @@ async function loadDevices() {
       el.className = "nav-item" + (currentDeviceId === id ? " active" : "");
       el.setAttribute("data-device", id);
       el.href = "#";
-      el.textContent = name + rssiIcon(dev.rssi);
+      el.innerHTML = esc(name) + rssiIcon(dev.rssi);
       el.addEventListener("click", (e) => { e.preventDefault(); showPage("device", id); });
       deviceListEl.appendChild(el);
     });
@@ -329,7 +340,7 @@ function renderDevice(dev) {
   document.getElementById("info-use").textContent = dev.customerUse || "--";
   document.getElementById("info-mac").textContent = dev.macAddress || "--";
   document.getElementById("info-firmware").textContent = dev.firmwareVersion || "--";
-  document.getElementById("info-rssi").textContent = rssiLabel(dev.rssi);
+  document.getElementById("info-rssi").innerHTML = rssiLabel(dev.rssi);
   document.getElementById("info-unit").textContent = unit === "F" ? "Fahrenheit" : "Celsius";
   document.getElementById("info-sensor").textContent = dev.useInternalSensor === true ? "Internal" : dev.useInternalSensor === false ? "External" : "--";
 
@@ -913,106 +924,133 @@ function renderBrewDetail(b) {
   loadFeedbackChart(b.id);
 }
 
-let brewGauge = null;
+let brewGauges = {};
+
+function ensureGauge(id) {
+  if (!brewGauges[id]) {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    brewGauges[id] = echarts.init(el, null, { renderer: "canvas" });
+  }
+  return brewGauges[id];
+}
+
+function gaugeBase(min, max, value, fmt, arcColors, needleColor, anchorColor, targetValue) {
+  const series = [
+    // Outer decorative ring
+    { type: "gauge", startAngle: 180, endAngle: 0, min, max, z: 1,
+      radius: "95%", center: ["50%", "78%"],
+      axisLine: { lineStyle: { width: 2, color: [[1, anchorColor.replace(")", ",0.15)").replace("rgb", "rgba")]] } },
+      axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
+      pointer: { show: false }, detail: { show: false }, title: { show: false } },
+    // Main gauge
+    { type: "gauge", startAngle: 180, endAngle: 0, min, max, z: 2,
+      radius: "88%", center: ["50%", "78%"],
+      axisLine: { roundCap: true, lineStyle: { width: 14, color: arcColors } },
+      axisTick: { distance: 2, length: 4, lineStyle: { color: "#8b949e", width: 1 } },
+      splitLine: { distance: 2, length: 10, lineStyle: { color: "#8b949e", width: 1.5 } },
+      axisLabel: { distance: 16, color: "#484f58", fontSize: 11 },
+      pointer: {
+        length: "65%", width: 5, offsetCenter: [0, "-8%"],
+        itemStyle: {
+          color: { type: "linear", x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [{ offset: 0, color: needleColor }, { offset: 1, color: "#484f58" }] },
+          shadowColor: "rgba(0,0,0,0.6)", shadowBlur: 8, shadowOffsetY: 4,
+        },
+      },
+      anchor: { show: true, size: 12, showAbove: true,
+        itemStyle: { borderWidth: 2, borderColor: anchorColor, color: "#21262d",
+          shadowColor: anchorColor.replace(")", ",0.3)").replace("rgb", "rgba"), shadowBlur: 8 } },
+      detail: {
+        valueAnimation: true, fontSize: 28, fontWeight: "700",
+        color: "#e6edf3", offsetCenter: [0, "28%"], formatter: fmt,
+      },
+      title: { show: false },
+      data: [{ value }],
+      animationDuration: 2000, animationEasingUpdate: "elasticOut",
+    },
+  ];
+  // Target marker
+  if (targetValue != null) {
+    series.push({
+      type: "gauge", startAngle: 180, endAngle: 0, min, max, z: 3,
+      radius: "88%", center: ["50%", "78%"],
+      axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
+      pointer: { length: "90%", width: 2, offsetCenter: [0, 0], itemStyle: { color: "rgba(46,160,67,0.6)" } },
+      detail: { show: false }, title: { show: false },
+      data: [{ value: targetValue }], silent: true,
+    });
+  }
+  return { series, backgroundColor: "transparent" };
+}
 
 function updateNeedleGauge(b) {
   const og = b.og;
   const sg = b.current_sg;
   const estFg = 1.010;
 
+  // --- Fermentation % ---
   let pct = 0;
   if (og && sg) {
     const totalDrop = og - estFg;
     const currentDrop = og - sg;
     pct = totalDrop > 0 ? Math.min(100, Math.max(0, (currentDrop / totalDrop) * 100)) : 0;
   }
-
-  const el = document.getElementById("brew-gauge-echarts");
-  if (!el) return;
-
-  if (!brewGauge) {
-    brewGauge = echarts.init(el, null, { renderer: "canvas" });
+  const gFerm = ensureGauge("gauge-fermentation");
+  if (gFerm) {
+    const opt = gaugeBase(0, 100, Math.round(pct), "{value}%",
+      [[0.15, "#f85149"], [0.30, "#f0883e"], [0.50, "#d29922"], [0.70, "#7ee787"], [1, "#2ea043"]],
+      "#ffffff", "rgb(88,166,255)");
+    // Add inner progress track
+    opt.series.push({
+      type: "gauge", startAngle: 180, endAngle: 0, min: 0, max: 100, z: 1,
+      radius: "72%", center: ["50%", "78%"],
+      axisLine: { lineStyle: { width: 3, color: [[pct / 100, "rgba(46,160,67,0.3)"], [1, "transparent"]] } },
+      axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
+      pointer: { show: false }, detail: { show: false }, title: { show: false },
+    });
+    gFerm.setOption(opt);
   }
+  const ogLabel = og ? Math.round(og * 1000) : "--";
+  const sgLabel = sg ? Math.round(sg * 1000) : "--";
+  document.getElementById("gauge-og-sg-label").textContent = `OG ${ogLabel} \u2192 SG ${sgLabel}`;
 
-  const val = Math.round(pct);
+  // --- Beer Temperature ---
+  const beerTemp = b.beer_temp;
+  const gBeer = ensureGauge("gauge-beer-temp");
+  if (gBeer) {
+    gBeer.setOption(gaugeBase(0, 35, beerTemp != null ? parseFloat(beerTemp).toFixed(1) : 0,
+      "{value}\u00b0C",
+      [[0.11, "#58a6ff"], [0.34, "#79c0ff"], [0.63, "#2ea043"], [0.80, "#d29922"], [1, "#f85149"]],
+      "#f0883e", "rgb(240,136,62)", b.target_beer_temp));
+  }
+  document.getElementById("gauge-beer-target-label").textContent =
+    b.target_beer_temp != null ? `Target ${b.target_beer_temp}\u00b0C` : "--";
 
-  brewGauge.setOption({
-    series: [{
-      type: "gauge",
-      startAngle: 180,
-      endAngle: 0,
-      min: 0,
-      max: 100,
-      radius: "100%",
-      center: ["50%", "75%"],
-      // Color bands on the arc (fixed, not attached to needle)
-      axisLine: {
-        lineStyle: {
-          width: 18,
-          color: [
-            [0.25, "#f0883e"],
-            [0.50, "#d29922"],
-            [0.75, "#7ee787"],
-            [1, "#2ea043"],
-          ],
-        },
-      },
-      // Tick marks
-      axisTick: {
-        distance: -22,
-        length: 6,
-        lineStyle: { color: "#8b949e", width: 1 },
-      },
-      splitLine: {
-        distance: -26,
-        length: 12,
-        lineStyle: { color: "#8b949e", width: 2 },
-      },
-      axisLabel: {
-        distance: -14,
-        color: "#8b949e",
-        fontSize: 12,
-        formatter: "{value}",
-      },
-      // Needle
-      pointer: {
-        icon: "path://M12.8,0.7l12,40.1H0.7L12.8,0.7z",
-        length: "70%",
-        width: 8,
-        offsetCenter: [0, "-5%"],
-        itemStyle: {
-          color: "#e6edf3",
-          shadowColor: "rgba(0,0,0,0.5)",
-          shadowBlur: 6,
-          shadowOffsetY: 3,
-        },
-      },
-      anchor: {
-        show: true,
-        size: 14,
-        showAbove: true,
-        itemStyle: {
-          borderWidth: 3,
-          borderColor: "#58a6ff",
-          color: "#30363d",
-        },
-      },
-      // Center value text
-      detail: {
-        valueAnimation: true,
-        fontSize: 28,
-        fontWeight: "bold",
-        color: "#e6edf3",
-        offsetCenter: [0, "20%"],
-        formatter: "{value}%",
-      },
-      title: { show: false },
-      data: [{ value: val }],
-      animationDuration: 800,
-      animationEasingUpdate: "cubicOut",
-    }],
-    backgroundColor: "transparent",
-  });
+  // --- Specific Gravity ---
+  const sgVal = sg ? Math.round(sg * 1000) : 0;
+  const ogVal = og ? Math.round(og * 1000) : null;
+  const gSG = ensureGauge("gauge-sg");
+  if (gSG) {
+    gSG.setOption(gaugeBase(1000, 1060, sgVal, "{value}",
+      [[0.25, "#2ea043"], [0.50, "#7ee787"], [0.75, "#d29922"], [1, "#f0883e"]],
+      "#c9d1d9", "rgb(201,209,217)", ogVal));
+  }
+  document.getElementById("gauge-sg-label").textContent =
+    sg ? "Dropping toward FG" : "--";
+
+  // --- Fridge Controller ---
+  const fridgeTemp = b.fridge_temp;
+  const gFridge = ensureGauge("gauge-fridge");
+  if (gFridge) {
+    gFridge.setOption(gaugeBase(0, 30,
+      fridgeTemp != null ? parseFloat(fridgeTemp).toFixed(1) : 0,
+      "{value}\u00b0C",
+      [[0.13, "#1f3d5c"], [0.33, "#58a6ff"], [0.60, "#2ea043"], [0.80, "#d29922"], [1, "#f85149"]],
+      "#58a6ff", "rgb(88,166,255)", b.controller_target));
+  }
+  const ctrlTarget = b.controller_target != null ? parseFloat(b.controller_target).toFixed(1) : "--";
+  document.getElementById("gauge-fridge-label").textContent = `Target ${ctrlTarget}\u00b0C`;
 }
 
 function renderBrewLog(events, startedAt) {

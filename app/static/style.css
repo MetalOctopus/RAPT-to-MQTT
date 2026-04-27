@@ -536,24 +536,51 @@ code {
   width: 100%;
 }
 
-/* --- Fermentation Gauge (canvas-gauges) --- */
-.gauge-needle-container {
+/* --- Gauge Dashboard (ECharts) --- */
+.gauge-dashboard {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.gauge-panel {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 0;
+  padding: 16px 12px 12px;
 }
 
-.gauge-needle-container canvas {
-  max-width: 320px;
+.gauge-title {
+  font-size: 0.85em;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #8b949e;
+  margin-bottom: 0;
+}
+
+.gauge-el {
+  width: 100%;
+  max-width: 380px;
+  height: 240px;
 }
 
 .gauge-abv {
   text-align: center;
-  font-size: 1.5em;
-  font-weight: 700;
+  font-size: 1.3em;
+  font-weight: 600;
   color: #e6edf3;
-  margin-top: -20px;
+  margin-top: -8px;
+  letter-spacing: 1px;
+}
+
+.gauge-sub {
+  text-align: center;
+  color: #484f58;
+  font-size: 0.8em;
+  margin-top: 4px;
+  letter-spacing: 0.5px;
 }
 
 /* --- Brew Tiles --- */
@@ -901,6 +928,12 @@ code {
     overflow-x: auto;
   }
   .chart-container {
+    height: 200px;
+  }
+  .gauge-dashboard {
+    grid-template-columns: 1fr;
+  }
+  .gauge-el {
     height: 200px;
   }
   .integration-grid {
