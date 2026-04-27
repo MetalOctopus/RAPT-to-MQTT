@@ -291,8 +291,7 @@ function renderDevice(dev) {
 
   document.getElementById("card-target-temp").style.display = isTilt ? "none" : "";
   document.getElementById("card-gravity").style.display = isTilt ? "" : "none";
-  document.getElementById("card-cooling").style.display = isTilt ? "none" : "";
-  document.getElementById("card-heating").style.display = isTilt ? "none" : "";
+  document.getElementById("card-mode").style.display = isTilt ? "none" : "";
   document.querySelectorAll(".rapt-only").forEach(el => el.style.display = isTilt ? "none" : "");
 
   // TILT default charts
@@ -309,8 +308,12 @@ function renderDevice(dev) {
   } else {
     document.getElementById("device-current-temp").textContent = formatTemp(dev.temperature, unit);
     document.getElementById("device-target-temp").textContent = formatTemp(dev.targetTemperature, unit);
-    document.getElementById("device-cooling").textContent = boolText(dev.coolingEnabled);
-    document.getElementById("device-heating").textContent = boolText(dev.heatingEnabled);
+    const cooling = dev._cooling_active;
+    const heating = dev._heating_active;
+    const mode = cooling ? "Cooling" : (heating ? "Heating" : "Idle");
+    const modeEl = document.getElementById("device-mode");
+    modeEl.textContent = mode;
+    modeEl.className = "card-value" + (cooling ? " mode-cool" : (heating ? " mode-heat" : ""));
   }
 
   document.getElementById("info-name").textContent = dev.name || "--";
@@ -343,6 +346,8 @@ function renderDevice(dev) {
   document.getElementById("stats-heating-time").textContent = formatSeconds(dev.heatingRunTime);
   document.getElementById("stats-heating-starts").textContent = dev.heatingStarts != null ? dev.heatingStarts : "--";
 
+  document.getElementById("settings-cool-allowed").textContent = boolText(dev.coolingEnabled);
+  document.getElementById("settings-heat-allowed").textContent = boolText(dev.heatingEnabled);
   document.getElementById("settings-pid").textContent = boolText(dev.pidEnabled);
   document.getElementById("settings-cool-hyst").textContent = dev.coolingHysteresis != null ? dev.coolingHysteresis + "\u00b0" : "--";
   document.getElementById("settings-heat-hyst").textContent = dev.heatingHysteresis != null ? dev.heatingHysteresis + "\u00b0" : "--";
@@ -468,17 +473,11 @@ async function updateDashboardCards() {
       }
       if (!isTilt) {
         html += `<div class="dash-metric"><span class="dash-metric-label">Target</span><span class="dash-metric-value">${formatTemp(dev.targetTemperature, unit)}</span></div>`;
-        if (dev.coolingEnabled && !dev.heatingEnabled) {
-          html += `<div class="dash-metric"><span class="dash-metric-label">Mode</span><span class="dash-metric-value active-cool">Cooling</span></div>`;
-        } else if (dev.heatingEnabled && !dev.coolingEnabled) {
-          html += `<div class="dash-metric"><span class="dash-metric-label">Mode</span><span class="dash-metric-value active-heat">Heating</span></div>`;
-        } else if (dev.coolingEnabled && dev.heatingEnabled) {
-          const temp = dev.temperature, target = dev.targetTemperature;
-          if (temp != null && target != null) {
-            if (temp > target) html += `<div class="dash-metric"><span class="dash-metric-label">Mode</span><span class="dash-metric-value active-cool">Cooling</span></div>`;
-            else html += `<div class="dash-metric"><span class="dash-metric-label">Mode</span><span class="dash-metric-value active-heat">Heating</span></div>`;
-          }
-        }
+        const cooling = dev._cooling_active;
+        const heating = dev._heating_active;
+        const mode = cooling ? "Cooling" : (heating ? "Heating" : "Idle");
+        const modeClass = cooling ? "active-cool" : (heating ? "active-heat" : "dim-value");
+        html += `<div class="dash-metric"><span class="dash-metric-label">Mode</span><span class="dash-metric-value ${modeClass}">${mode}</span></div>`;
       }
 
       const lastSeen = dev._last_seen || dev.lastActivityTime;

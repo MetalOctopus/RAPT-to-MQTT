@@ -374,6 +374,14 @@ button:disabled {
   margin-top: 4px;
 }
 
+.card-value.mode-cool {
+  color: #79c0ff;
+}
+
+.card-value.mode-heat {
+  color: #f0883e;
+}
+
 /* --- Info tables --- */
 .info-table {
   width: 100%;

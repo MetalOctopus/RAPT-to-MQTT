@@ -30,7 +30,9 @@ class RaptBridge:
             "Accept": "application/json",
         }
         # TILT change detection — only record to history on meaningful change
-        self._tilt_last = {}  # device_id -> {temp, sg, rssi_bucket}
+        self._tilt_last = {}  # device_id -> {temp, sg, time}
+        # Controller runtime tracking — infer heating/cooling from deltas
+        self._ctrl_last_runtimes = {}  # device_id -> {cooling, heating}
 
     @staticmethod
     def _rssi_bucket(rssi):
@@ -303,19 +305,37 @@ class RaptBridge:
 
         with self._devices_lock:
             for controller in response:
+                cid = controller["id"]
                 controller["_last_seen"] = datetime.now().isoformat()
-                self._devices[controller["id"]] = controller
+
+                # Infer actual heating/cooling mode from runtime deltas
+                cool_rt = controller.get("coolingRunTime", 0)
+                heat_rt = controller.get("heatingRunTime", 0)
+                prev = self._ctrl_last_runtimes.get(cid)
+                if prev:
+                    controller["_cooling_active"] = cool_rt > prev["cooling"]
+                    controller["_heating_active"] = heat_rt > prev["heating"]
+                else:
+                    # First poll — can't tell yet, assume idle
+                    controller["_cooling_active"] = False
+                    controller["_heating_active"] = False
+                self._ctrl_last_runtimes[cid] = {"cooling": cool_rt, "heating": heat_rt}
+
+                self._devices[cid] = controller
 
         controller = response[0]
         device_id = controller["id"]
         current_temp = "%.2f" % controller["temperature"]
         target_temp = "%.2f" % controller["targetTemperature"]
         name = controller.get("name", "Unknown")
+        cooling = controller.get("_cooling_active", False)
+        heating = controller.get("_heating_active", False)
+        mode = "Cooling" if cooling else ("Heating" if heating else "Idle")
 
         self._logger.info(
             f"{datetime.now().strftime('%B %d - %H:%M')} | "
             f"{name} | "
-            f"Current: {current_temp}\u00b0C | Target: {target_temp}\u00b0C"
+            f"Current: {current_temp}\u00b0C | Target: {target_temp}\u00b0C | Mode: {mode}"
         )
 
         payload = json.dumps({
@@ -323,8 +343,8 @@ class RaptBridge:
             "name": name,
             "current_temp": current_temp,
             "target_temp": target_temp,
-            "cooling_enabled": controller.get("coolingEnabled", False),
-            "heating_enabled": controller.get("heatingEnabled", False),
+            "cooling_active": cooling,
+            "heating_active": heating,
             "connection_state": controller.get("connectionState", "Unknown"),
             "rssi": controller.get("rssi", 0),
         })
@@ -337,8 +357,8 @@ class RaptBridge:
                     "temperature": ctrl.get("temperature"),
                     "targetTemperature": ctrl.get("targetTemperature"),
                     "rssi": ctrl.get("rssi"),
-                    "coolingEnabled": 1 if ctrl.get("coolingEnabled") else 0,
-                    "heatingEnabled": 1 if ctrl.get("heatingEnabled") else 0,
+                    "coolingActive": 1 if ctrl.get("_cooling_active") else 0,
+                    "heatingActive": 1 if ctrl.get("_heating_active") else 0,
                 })
 
         return device_id
