@@ -213,24 +213,37 @@ class RaptBridge:
             with self._devices_lock:
                 self._devices[device_id] = device
 
-            # Record to history: require value change AND 60s minimum interval
-            # (RSSI bounces wildly across buckets; don't let it flood the DB)
-            last = self._tilt_last.get(device_id, {})
-            now = time.time()
-            elapsed = now - last.get("time", 0)
+            # Count incoming messages for periodic summary
+            tilt_stats = self._tilt_last.get(device_id, {})
+            tilt_stats["rx_count"] = tilt_stats.get("rx_count", 0) + 1
 
-            temp_changed = abs(temp_c - last.get("temp", float("inf"))) > 0.1
-            sg_changed = abs(sg - last.get("sg", float("inf"))) > 0.0005
+            # Record to history: require value change AND 60s minimum interval
+            now = time.time()
+            elapsed = now - tilt_stats.get("time", 0)
+
+            temp_changed = abs(temp_c - tilt_stats.get("temp", float("inf"))) > 0.1
+            sg_changed = abs(sg - tilt_stats.get("sg", float("inf"))) > 0.0005
 
             if (temp_changed or sg_changed) and elapsed >= 60:
+                rx = tilt_stats.get("rx_count", 1)
+                reason = []
+                if temp_changed:
+                    reason.append(f"temp {tilt_stats.get('temp', '?')}\u2192{temp_c}")
+                if sg_changed:
+                    reason.append(f"SG {round(tilt_stats.get('sg', 0) * 1000)}\u2192{round(sg * 1000)}")
+
                 self._tilt_last[device_id] = {
                     "temp": temp_c,
                     "sg": sg,
                     "time": now,
+                    "rx_count": 0,
                 }
 
+                rssi_lbl = self._rssi_bucket(rssi)
                 self._logger.info(
-                    f"TILT {color} | Temp: {temp_f}\u00b0F ({temp_c}\u00b0C) | SG: {round(sg * 1000)}"
+                    f"TILT {color} | {temp_c}\u00b0C ({temp_f}\u00b0F) | "
+                    f"SG: {round(sg * 1000)} | RSSI: {rssi} dBm (L{rssi_lbl}) | "
+                    f"Recorded ({', '.join(reason)}) [{rx} msgs/{elapsed:.0f}s]"
                 )
 
                 if self._history:
@@ -240,6 +253,8 @@ class RaptBridge:
                         "specificGravity": sg * 1000,
                         "rssi": rssi if rssi else None,
                     })
+            else:
+                self._tilt_last[device_id] = tilt_stats
 
         except Exception as e:
             self._logger.error(f"Error processing TILT message: {e}")
@@ -353,12 +368,18 @@ class RaptBridge:
         if self._history:
             for ctrl in response:
                 cid = ctrl["id"]
+                # mode: -1 = cooling, 0 = idle, 1 = heating (graphable integer)
+                if ctrl.get("_cooling_active"):
+                    mode_val = -1
+                elif ctrl.get("_heating_active"):
+                    mode_val = 1
+                else:
+                    mode_val = 0
                 self._history.record(cid, {
                     "temperature": ctrl.get("temperature"),
                     "targetTemperature": ctrl.get("targetTemperature"),
                     "rssi": ctrl.get("rssi"),
-                    "coolingActive": 1 if ctrl.get("_cooling_active") else 0,
-                    "heatingActive": 1 if ctrl.get("_heating_active") else 0,
+                    "mode": mode_val,
                 })
 
         return device_id
