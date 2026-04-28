@@ -11,17 +11,18 @@ python -m app.main       # or run directly (needs pip install -r requirements.tx
 ## Project Structure
 ```
 app/
-  main.py           # Flask app, all API routes, SSE log streaming
-  rapt_service.py   # RaptBridge - RAPT API polling + MQTT pub/sub
+  main.py           # Flask app, all API routes, SSE log streaming, version endpoint
+  rapt_service.py   # RaptBridge - RAPT API polling + MQTT pub/sub + device persistence
   brew_session.py   # Brew lifecycle, smart temp feedback loop (P-controller)
-  history.py        # SQLite time-series storage
+  history.py        # SQLite time-series storage + DB migration (SG format)
   config.py         # JSON config with env var overrides
   log_handler.py    # WebLogHandler for SSE + history buffer
   templates/index.html  # Single-page UI (no framework)
-  static/app.js     # All frontend JS (charts, brew, navigation)
+  static/app.js     # All frontend JS (charts, brew, navigation, gravity formatting)
   static/style.css  # Dark theme CSS
   static/icon.svg   # Beer+wifi favicon
-  static/icon.png   # 256x256 Docker/Unraid icon
+  static/icon.png   # 256x256 Docker/Unraid icon (rendered from favicon SVG)
+  VERSION           # Auto-generated at Docker build time (commit count × 0.01)
 research/           # RAPT API docs, TILT ecosystem research, TiltPi flow analysis
 HomeAssistant/
   hacs.json                         # HACS store metadata
@@ -41,15 +42,20 @@ HomeAssistant/
 ## Key Conventions
 - Push to main directly (no feature branches)
 - Temperatures: Celsius first, e.g. "20.0°C (68°F)"
-- Specific gravity: decimal format, e.g. 1.025 not 1025. Supports SG/Plato toggle via config.
+- Specific gravity: decimal format, e.g. 1.025 not 1025. Use `fmtG()` helper in JS. Supports SG/Plato toggle via config (`gravity_unit`).
 - Round all device API values to 1 decimal (RAPT returns e.g. 17.4999904632568)
 - MQTT topics: `RAPT/temperatureController`, `RAPT/temperatureController/Command`, `TiltPi`, `RAPT2MQTT/notify`
 - All frontend is vanilla JS — no React/Vue/etc
 - Chart.js 4 with chartjs-adapter-date-fns for time axes, ECharts 5 for gauges
+- Chart X-axis: Grafana-style — date on day boundaries (major ticks, bold), time between (minor ticks)
 - paho-mqtt 1.6.x (not 2.x) — uses `mqtt.Client()` not `mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)`
 - RAPT API POST format: `requests.post(url, data=payload)` (form-encoded, NOT json=)
 - Prefer plain-text explanations over tooltips/info icons
 - Status displays should include action plans with countdowns, not just current state
+- Data retention: forever. No pruning. Don't add cleanup or retention limits.
+- Device types: "RAPT Temperature Controller" and "Tilt Hydrometer" — full names, different ecosystems
+- Device identity: stable IDs (RAPT UUID, tilt-{color}). Nicknames are display-only, never used as keys.
+- Version: total commits × 0.01, baked into Docker image via BUILD_VERSION arg
 
 ## BEER2MQTT (HACS Integration)
 - Lives in `HomeAssistant/custom_components/beer2mqtt/`
@@ -68,6 +74,8 @@ P-only cascaded servo control. Do NOT add I or D terms — 5-min sample rate + h
 - TiltPi Node-RED: 192.168.0.94:1880 (ALWAYS backup flows before modifying)
 - MQTT broker: configured per-install
 - Docker registry: ghcr.io/metaloctopus/rapt-to-mqtt
+- Unraid server: 192.168.0.250 (reachable from dev machine, can curl/ping)
 
 ## Testing
 No test suite yet. Verify by running `docker compose up` and checking the web UI at :8099.
+The running instance is accessible at http://192.168.0.250:8099/ — use curl for API checks.
