@@ -130,8 +130,8 @@ class HistoryStore:
             ).fetchall()
         return [r["metric"] for r in rows]
 
-    def prune(self, max_age_seconds=604800):
-        """Delete records older than max_age (default 7 days)."""
+    def prune(self, max_age_seconds=31536000):
+        """Delete records older than max_age (default 365 days)."""
         cutoff = time.time() - max_age_seconds
         with self._lock:
             with self._connect() as conn:

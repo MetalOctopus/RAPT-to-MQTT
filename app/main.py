@@ -53,17 +53,36 @@ if is_configured(config) and config.get("auto_start", True):
     bridge.start()
 
 
-# Periodic DB pruning (daily, 7-day retention)
-def _prune_loop():
-    while True:
-        try:
-            history.prune()
-            logger.info("Database pruned (7-day retention)")
-        except Exception as e:
-            logger.error(f"Prune error: {e}")
-        time.sleep(86400)
+# Log DB stats on startup so we can see if data survived
+def _log_db_stats():
+    try:
+        import sqlite3
+        db_path = os.path.join(CONFIG_DIR, "history.db")
+        if os.path.exists(db_path):
+            size_kb = os.path.getsize(db_path) / 1024
+            conn = sqlite3.connect(db_path)
+            count = conn.execute("SELECT COUNT(*) FROM device_history").fetchone()[0]
+            oldest = conn.execute("SELECT MIN(timestamp) FROM device_history").fetchone()[0]
+            newest = conn.execute("SELECT MAX(timestamp) FROM device_history").fetchone()[0]
+            conn.close()
+            if oldest and newest:
+                span_hours = (newest - oldest) / 3600
+                logger.info(
+                    f"Database: {count} records, {span_hours:.1f}h span "
+                    f"({span_hours/24:.1f} days), {size_kb:.0f}KB on disk"
+                )
+            else:
+                logger.info(f"Database: empty ({size_kb:.0f}KB on disk)")
+        else:
+            logger.info("Database: not found, will be created on first write")
+    except Exception as e:
+        logger.warning(f"DB stats check failed: {e}")
 
-threading.Thread(target=_prune_loop, daemon=True).start()
+_log_db_stats()
+
+# No automatic pruning — data is kept forever.
+# SQLite handles large datasets fine. If a user ever needs to trim,
+# they can delete history.db and it'll be recreated.
 
 
 @app.route("/")
