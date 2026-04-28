@@ -12,6 +12,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
 
+ARG BUILD_VERSION=0.00
+RUN echo "$BUILD_VERSION" > /app/VERSION
+
 ENV CONFIG_DIR=/config
 
 EXPOSE 8099

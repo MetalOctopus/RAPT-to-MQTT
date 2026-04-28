@@ -462,8 +462,9 @@ async function loadTiltDefaultCharts(deviceId) {
         options: {
           responsive: true, maintainAspectRatio: false,
           scales: {
-            x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "MMM d, HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
-                 ticks: { color: "#8b949e", maxTicksLimit: 10 }, grid: { color: "#21262d" } },
+            x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
+                 ticks: { color: "#8b949e", maxTicksLimit: 12, major: { enabled: true }, font: ctx => ctx.tick && ctx.tick.major ? { weight: "bold", size: 11 } : { size: 10 },
+                   callback: function(val, idx, ticks) { const d = new Date(val); const hm = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); if (ticks[idx] && ticks[idx].major) { const mon = d.toLocaleString("en",{month:"short"}); return [mon + " " + d.getDate(), hm]; } return hm; } }, grid: { color: "#21262d" } },
             y: { grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
           },
           plugins: { legend: { labels: { color: "#c9d1d9" } } },
@@ -490,8 +491,9 @@ async function loadTiltDefaultCharts(deviceId) {
         options: {
           responsive: true, maintainAspectRatio: false,
           scales: {
-            x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "MMM d, HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
-                 ticks: { color: "#8b949e", maxTicksLimit: 10 }, grid: { color: "#21262d" } },
+            x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
+                 ticks: { color: "#8b949e", maxTicksLimit: 12, major: { enabled: true }, font: ctx => ctx.tick && ctx.tick.major ? { weight: "bold", size: 11 } : { size: 10 },
+                   callback: function(val, idx, ticks) { const d = new Date(val); const hm = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); if (ticks[idx] && ticks[idx].major) { const mon = d.toLocaleString("en",{month:"short"}); return [mon + " " + d.getDate(), hm]; } return hm; } }, grid: { color: "#21262d" } },
             y: { grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
           },
           plugins: { legend: { labels: { color: "#c9d1d9" } } },
@@ -643,8 +645,9 @@ async function addChartSeries(chartObj, seriesArr, canvasId, deviceId, metric, r
           responsive: true, maintainAspectRatio: false,
           interaction: { mode: "index", intersect: false },
           scales: {
-            x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "MMM d, HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
-                 ticks: { color: "#8b949e", maxTicksLimit: 10 }, grid: { color: "#21262d" } },
+            x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
+                 ticks: { color: "#8b949e", maxTicksLimit: 12, major: { enabled: true }, font: ctx => ctx.tick && ctx.tick.major ? { weight: "bold", size: 11 } : { size: 10 },
+                   callback: function(val, idx, ticks) { const d = new Date(val); const hm = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); if (ticks[idx] && ticks[idx].major) { const mon = d.toLocaleString("en",{month:"short"}); return [mon + " " + d.getDate(), hm]; } return hm; } }, grid: { color: "#21262d" } },
             y: { position: "left", grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
           },
           plugins: { legend: { labels: { color: "#c9d1d9" } } },
@@ -727,7 +730,8 @@ async function loadRssiChart(deviceId) {
       options: {
         responsive: true, maintainAspectRatio: false,
         scales: {
-          x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "MMM d, HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } }, ticks: { color: "#8b949e", maxTicksLimit: 10 }, grid: { color: "#21262d" } },
+          x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } }, ticks: { color: "#8b949e", maxTicksLimit: 12, major: { enabled: true }, font: ctx => ctx.tick && ctx.tick.major ? { weight: "bold", size: 11 } : { size: 10 },
+                   callback: function(val, idx, ticks) { const d = new Date(val); const hm = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); if (ticks[idx] && ticks[idx].major) { const mon = d.toLocaleString("en",{month:"short"}); return [mon + " " + d.getDate(), hm]; } return hm; } }, grid: { color: "#21262d" } },
           y: { grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
         },
         plugins: { legend: { labels: { color: "#c9d1d9" } } },
@@ -1747,8 +1751,9 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
   if (!datasets.length) return;
 
   const scales = {
-    x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "MMM d, HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
-         ticks: { color: "#8b949e", maxTicksLimit: 10 }, grid: { color: "#21262d" } },
+    x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
+         ticks: { color: "#8b949e", maxTicksLimit: 12, major: { enabled: true }, font: ctx => ctx.tick && ctx.tick.major ? { weight: "bold", size: 11 } : { size: 10 },
+                   callback: function(val, idx, ticks) { const d = new Date(val); const hm = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); if (ticks[idx] && ticks[idx].major) { const mon = d.toLocaleString("en",{month:"short"}); return [mon + " " + d.getDate(), hm]; } return hm; } }, grid: { color: "#21262d" } },
     y: { position: "left", grace: "10%", title: { display: true, text: "Temperature (\u00b0C)", color: "#8b949e" },
          ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
   };
@@ -1820,6 +1825,14 @@ document.getElementById("btn-brew-clear-chart").addEventListener("click", () => 
 
 /* Feedback chart */
 let lastFeedbackSession = null;
+let feedbackRangeAll = false;
+
+function toggleFeedbackRange() {
+  feedbackRangeAll = !feedbackRangeAll;
+  const btn = document.getElementById("btn-feedback-range");
+  btn.textContent = feedbackRangeAll ? "Show: Entire Brew" : "Show: Last 4 Hours";
+  if (lastFeedbackSession) loadFeedbackChart(lastFeedbackSession, true);
+}
 
 async function loadFeedbackChart(sessionId, forceReload) {
   // Only recreate if session changed or forced
@@ -1830,10 +1843,14 @@ async function loadFeedbackChart(sessionId, forceReload) {
     const data = await (await fetch(`/api/brews/${sessionId}/feedback/log`)).json();
     if (!data.length) return;
 
-    // Last 4 hours only — keeps it readable
-    const cutoff = Date.now() - (4 * 60 * 60 * 1000);
-    const recent = data.filter(d => d.timestamp * 1000 >= cutoff);
-    const pts = recent.length ? recent : data.slice(-48); // fallback: last 48 points
+    let pts;
+    if (feedbackRangeAll) {
+      pts = data; // entire brew
+    } else {
+      const cutoff = Date.now() - (4 * 60 * 60 * 1000);
+      const recent = data.filter(d => d.timestamp * 1000 >= cutoff);
+      pts = recent.length ? recent : data.slice(-48);
+    }
 
     // Compute Y range: find min/max across all temps, pad by 2°C
     let allTemps = [];
@@ -1885,10 +1902,11 @@ async function loadFeedbackChart(sessionId, forceReload) {
         interaction: { mode: "index", intersect: false },
         scales: {
           x: { type: "time",
-            time: { tooltipFormat: "HH:mm", displayFormats: { minute: "HH:mm", hour: "HH:mm" } },
-            ticks: { color: "#8b949e", maxTicksLimit: 12 },
+            time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
+            ticks: { color: "#8b949e", maxTicksLimit: 12, major: { enabled: true }, font: ctx => ctx.tick && ctx.tick.major ? { weight: "bold", size: 11 } : { size: 10 },
+                   callback: function(val, idx, ticks) { const d = new Date(val); const hm = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); if (ticks[idx] && ticks[idx].major) { const mon = d.toLocaleString("en",{month:"short"}); return [mon + " " + d.getDate(), hm]; } return hm; } },
             grid: { color: "#21262d" },
-            title: { display: true, text: "Last 4 Hours", color: "#484f58", font: { size: 11 } },
+            title: { display: true, text: feedbackRangeAll ? "Entire Brew" : "Last 4 Hours", color: "#484f58", font: { size: 11 } },
           },
           y: { min: yMin, max: yMax,
             ticks: { color: "#8b949e", stepSize: 1, callback: v => v + "\u00b0C" },
@@ -2039,7 +2057,7 @@ async function loadManageDevices() {
     empty.style.display = "none";
     grid.innerHTML = devices.map(d => {
       const isLive = d.online;
-      const isTilt = d.device_type === "TILT";
+      const isTilt = d.device_type.toLowerCase() === "tilt";
       const typeClass = isTilt ? "tilt" : "rapt";
       const typeLabel = isTilt ? "Tilt Hydrometer" : "RAPT Temperature Controller";
       const displayName = d.nickname || d.name;
@@ -2296,6 +2314,24 @@ checkStatus();
 initConsole();
 loadDevices();
 loadBrewNav();
+
+// Load version into About page
+fetch("/api/version").then(r => r.json()).then(d => {
+  const el = document.getElementById("app-version");
+  if (el) el.textContent = d.version;
+}).catch(() => {});
+
+// Navigate to latest active brew on startup (or stay on config if none)
+(async () => {
+  try {
+    const brews = await (await fetch("/api/brews")).json();
+    if (brews.length) {
+      // Sort by started_at descending, show most recent
+      const latest = brews.sort((a, b) => (b.started_at || "").localeCompare(a.started_at || ""))[0];
+      showPage("brew-detail", latest.id);
+    }
+  } catch (e) {}
+})();
 
 // Periodic refreshes
 setInterval(checkStatus, 5000);

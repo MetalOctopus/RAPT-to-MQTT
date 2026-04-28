@@ -85,9 +85,19 @@ _log_db_stats()
 # they can delete history.db and it'll be recreated.
 
 
+# --- Version ---
+_version_file = os.path.join(os.path.dirname(__file__), "VERSION")
+APP_VERSION = open(_version_file).read().strip() if os.path.exists(_version_file) else "dev"
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/api/version")
+def get_version():
+    return jsonify({"version": APP_VERSION})
 
 
 # --- Config ---

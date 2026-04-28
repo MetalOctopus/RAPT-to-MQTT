@@ -428,7 +428,10 @@
               <p><strong>Your controller's own limits still apply.</strong> If it has a compressor cooldown of <span id="how-comp-delay">5</span> minutes, it physically cannot start a new cooling cycle faster than that. If it has a heating hysteresis of <span id="how-heat-hyst">0.3</span>&deg;C, it won't kick in until the air drifts that far below target. We can't override these &mdash; they're hardware safety limits set in the <a href="https://app.rapt.io" target="_blank" rel="noopener" style="color:#58a6ff">RAPT Portal</a>. What we <em>can</em> do is make sure the target the controller is chasing actually reflects where the beer needs to be, not just where the air is.</p>
             </div>
           </details>
-          <div class="chart-container" style="margin-top:12px">
+          <div class="controls" style="margin-top:12px;margin-bottom:8px">
+            <button id="btn-feedback-range" class="btn-small" onclick="toggleFeedbackRange()">Show: Last 4 Hours</button>
+          </div>
+          <div class="chart-container">
             <canvas id="feedback-chart"></canvas>
           </div>
         </div>
@@ -771,6 +774,7 @@
     <div id="page-about" class="page">
       <div class="panel">
         <h2>About RAPT2MQTT</h2>
+        <p style="color:#8b949e;margin-bottom:8px">Version <span id="app-version">...</span></p>
         <p>RAPT2MQTT is an open-source bridge between <strong>Kegland RAPT</strong> brewing devices and <strong>MQTT</strong>, built for homebrewers who want real control over their fermentation.</p>
         <p>This project was born from frustration with cloud-only brewery management. Your data should live on <em>your</em> network, in <em>your</em> Home Assistant, under <em>your</em> control.</p>
       </div>
