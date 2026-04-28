@@ -371,7 +371,7 @@
         </div>
         <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
           <button id="btn-brew-filter" class="btn-save btn-sm">Filter: ON</button>
-          <span class="help-text" style="line-height:1.4">Removes physically impossible spikes (e.g. a -20°C TILT reading or a 50-point SG jump). Filters any change faster than 2°C/min for temperature or 20 SG points/min. Turn off to see raw unfiltered data.</span>
+          <span class="help-text" style="line-height:1.4">Removes physically impossible spikes (e.g. a -20°C TILT reading or a sudden SG jump from sloshing). Filters any change faster than 2°C/min for temperature or 2 SG points/min. Turn off to see raw unfiltered data.</span>
         </div>
       </div>
 
@@ -595,7 +595,7 @@
             </div>
             <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
               <button id="btn-tilt-sg-filter" class="btn-save btn-sm" onclick="toggleDeviceFilter('tilt-sg')">Filter: ON</button>
-              <span class="help-text">Removes impossible spikes (&gt;20 SG points/min). Turn off for raw data.</span>
+              <span class="help-text">Removes impossible spikes (&gt;2 SG points/min). Turn off for raw data.</span>
             </div>
           </div>
         </div>

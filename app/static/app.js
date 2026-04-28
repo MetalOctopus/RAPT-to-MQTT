@@ -463,7 +463,7 @@ async function loadTiltDefaultCharts(deviceId) {
           scales: {
             x: { type: "time", time: { tooltipFormat: "HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm" } },
                  ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
-            y: { min: 4, max: 30, ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+            y: { grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
           },
           plugins: { legend: { labels: { color: "#c9d1d9" } } },
         },
@@ -475,7 +475,7 @@ async function loadTiltDefaultCharts(deviceId) {
     if (tiltSgChart) { tiltSgChart.destroy(); tiltSgChart = null; }
     if (sgData.length) {
       let pts = sgData.map(d => ({ x: d.timestamp * 1000, y: d.value }));
-      if (deviceFilterEnabled["tilt-sg"]) pts = filterOutliers(pts, 5);
+      if (deviceFilterEnabled["tilt-sg"]) pts = filterOutliers(pts, 2);
       const ctx2 = document.getElementById("tilt-sg-chart").getContext("2d");
       tiltSgChart = new Chart(ctx2, {
         type: "line",
@@ -491,7 +491,7 @@ async function loadTiltDefaultCharts(deviceId) {
           scales: {
             x: { type: "time", time: { tooltipFormat: "HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm" } },
                  ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
-            y: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+            y: { grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
           },
           plugins: { legend: { labels: { color: "#c9d1d9" } } },
         },
@@ -644,13 +644,13 @@ async function addChartSeries(chartObj, seriesArr, canvasId, deviceId, metric, r
           scales: {
             x: { type: "time", time: { tooltipFormat: "HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm" } },
                  ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
-            y: { position: "left", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+            y: { position: "left", grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
           },
           plugins: { legend: { labels: { color: "#c9d1d9" } } },
         },
       };
       if (axis === "right") {
-        cfg.options.scales.y1 = { position: "right", ticks: { color: "#8b949e" }, grid: { drawOnChartArea: false } };
+        cfg.options.scales.y1 = { position: "right", grace: "10%", ticks: { color: "#8b949e" }, grid: { drawOnChartArea: false } };
       }
       return new Chart(ctx, cfg);
     } else {
@@ -727,7 +727,7 @@ async function loadRssiChart(deviceId) {
         responsive: true, maintainAspectRatio: false,
         scales: {
           x: { type: "time", time: { tooltipFormat: "HH:mm:ss" }, ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
-          y: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+          y: { grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
         },
         plugins: { legend: { labels: { color: "#c9d1d9" } } },
       },
@@ -1712,7 +1712,7 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
   if (results.sg?.length) {
     hasSG = true;
     let pts = mapPts(results.sg);
-    if (doFilter) pts = filterOutliers(pts, 20);
+    if (doFilter) pts = filterOutliers(pts, 2);
     datasets.push({
       label: "Specific Gravity",
       data: pts,
@@ -1748,11 +1748,11 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
   const scales = {
     x: { type: "time", time: { tooltipFormat: "HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm" } },
          ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
-    y: { position: "left", title: { display: true, text: "Temperature (\u00b0C)", color: "#8b949e" },
+    y: { position: "left", grace: "10%", title: { display: true, text: "Temperature (\u00b0C)", color: "#8b949e" },
          ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
   };
   if (hasSG) {
-    scales.y1 = { position: "right", title: { display: true, text: "Specific Gravity", color: "#8b949e" },
+    scales.y1 = { position: "right", grace: "10%", title: { display: true, text: "Specific Gravity", color: "#8b949e" },
                   ticks: { color: "#8b949e", callback: v => Math.round(v) }, grid: { drawOnChartArea: false } };
   }
   if (hasMode) {
