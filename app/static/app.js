@@ -28,6 +28,24 @@ let dashboardEnabled = {};
 const chartColors = ["#58a6ff", "#f0883e", "#2ea043", "#bc8cff", "#f85149", "#79c0ff", "#d29922", "#7ee787"];
 let colorIdx = 0;
 
+/* Gravity formatting */
+let gravityUnit = "sg"; // "sg" or "plato"
+
+function sgToPlato(sg) {
+  if (sg == null) return null;
+  return -616.868 + 1111.14 * sg - 630.272 * sg * sg + 135.997 * sg * sg * sg;
+}
+
+function fmtG(sg) {
+  if (sg == null) return "--";
+  if (gravityUnit === "plato") return sgToPlato(sg).toFixed(1) + "°P";
+  return sg.toFixed(3);
+}
+
+function fmtGLabel() {
+  return gravityUnit === "plato" ? "Plato (°P)" : "Specific Gravity";
+}
+
 /* --- Navigation --- */
 function showPage(page, id) {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
@@ -216,6 +234,8 @@ async function loadConfig() {
     document.getElementById("notification_topic").value = cfg.notification_topic || "RAPT2MQTT/notify";
     document.getElementById("auto_start").checked = cfg.auto_start !== false;
     document.getElementById("hide_affiliate_links").checked = !!cfg.hide_affiliate_links;
+    document.getElementById("gravity_unit").value = cfg.gravity_unit || "sg";
+    gravityUnit = cfg.gravity_unit || "sg";
     window._hideAffiliateLinks = !!cfg.hide_affiliate_links;
     applyAffiliateVisibility();
   } catch (e) { showToast("Failed to load config", "error"); }
@@ -233,12 +253,14 @@ async function saveConfig() {
     notification_topic: document.getElementById("notification_topic").value,
     auto_start: document.getElementById("auto_start").checked,
     hide_affiliate_links: document.getElementById("hide_affiliate_links").checked,
+    gravity_unit: document.getElementById("gravity_unit").value,
   };
   try {
     const res = await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
     const result = await res.json();
     if (res.ok) {
       showToast("Configuration saved", "success");
+      gravityUnit = data.gravity_unit;
       window._hideAffiliateLinks = data.hide_affiliate_links;
       applyAffiliateVisibility();
     } else showToast(result.error || "Save failed", "error");
@@ -362,8 +384,7 @@ function renderDevice(dev) {
       ? formatTemp(dev.temperature, "C") + " (" + dev.temperature_f + "\u00b0F)"
       : "--";
     document.getElementById("device-current-temp").textContent = tempStr;
-    document.getElementById("device-gravity").textContent =
-      dev.specificGravity != null ? Math.round(dev.specificGravity * 1000) : "--";
+    document.getElementById("device-gravity").textContent = fmtG(dev.specificGravity);
   } else {
     document.getElementById("device-current-temp").textContent = formatTemp(dev.temperature, unit);
     document.getElementById("device-target-temp").textContent = formatTemp(dev.targetTemperature, unit);
@@ -477,7 +498,7 @@ async function loadTiltDefaultCharts(deviceId) {
     if (tiltSgChart) { tiltSgChart.destroy(); tiltSgChart = null; }
     if (sgData.length) {
       let pts = sgData.map(d => ({ x: d.timestamp * 1000, y: d.value }));
-      if (deviceFilterEnabled["tilt-sg"]) pts = filterOutliers(pts, 2);
+      if (deviceFilterEnabled["tilt-sg"]) pts = filterOutliers(pts, 0.002);
       const ctx2 = document.getElementById("tilt-sg-chart").getContext("2d");
       tiltSgChart = new Chart(ctx2, {
         type: "line",
@@ -562,7 +583,7 @@ async function updateDashboardCards() {
 
       html += `<div class="dash-metric"><span class="dash-metric-label">Temp</span><span class="dash-metric-value">${formatTemp(dev.temperature, unit)}</span></div>`;
       if (isTilt && dev.specificGravity != null) {
-        html += `<div class="dash-metric"><span class="dash-metric-label">SG</span><span class="dash-metric-value">${Math.round(dev.specificGravity * 1000)}</span></div>`;
+        html += `<div class="dash-metric"><span class="dash-metric-label">${gravityUnit === "plato" ? "°P" : "SG"}</span><span class="dash-metric-value">${fmtG(dev.specificGravity)}</span></div>`;
       }
       if (!isTilt) {
         html += `<div class="dash-metric"><span class="dash-metric-label">Target</span><span class="dash-metric-value">${formatTemp(dev.targetTemperature, unit)}</span></div>`;
@@ -843,8 +864,8 @@ async function loadBrewsPage() {
               <span class="brew-tile-value">${days}</span>
             </div>
             <div class="brew-tile-metric">
-              <span class="brew-tile-label">SG</span>
-              <span class="brew-tile-value">${sg != null ? Math.round(sg * 1000) : '--'}</span>
+              <span class="brew-tile-label">${gravityUnit === "plato" ? "°P" : "SG"}</span>
+              <span class="brew-tile-value">${fmtG(sg)}</span>
             </div>
             <div class="brew-tile-metric">
               <span class="brew-tile-label">ABV</span>
@@ -871,8 +892,8 @@ async function loadBrewHistory() {
     const completed = data.filter(b => b.status !== "active");
     if (!completed.length) { el.innerHTML = "No previous brews."; return; }
     el.innerHTML = completed.map(b => {
-      const ogStr = b.og ? Math.round(b.og * 1000) : "--";
-      const fgStr = b.fg ? Math.round(b.fg * 1000) : "--";
+      const ogStr = fmtG(b.og);
+      const fgStr = fmtG(b.fg);
       return `<div class="brew-history-item"><strong>${esc(b.name)}</strong> -- ${b.status} (${new Date(b.started_at).toLocaleDateString()}) OG: ${ogStr} FG: ${fgStr}</div>`;
     }).join("");
   } catch (e) {}
@@ -901,7 +922,7 @@ document.getElementById("btn-start-brew").addEventListener("click", async () => 
   const ogRaw = document.getElementById("brew-og").value;
   const data = {
     name: document.getElementById("brew-name").value || "Untitled Brew",
-    og: ogRaw ? parseFloat(ogRaw) / 1000 : null,
+    og: ogRaw ? parseFloat(ogRaw) : null,
     target_beer_temp: parseFloat(document.getElementById("brew-target-temp").value) || null,
     tilt_device_id: document.getElementById("brew-tilt").value || null,
     controller_device_id: document.getElementById("brew-controller").value || null,
@@ -964,11 +985,11 @@ function renderBrewDetail(b) {
   const beerTemp = b.beer_temp;
   document.getElementById("brew-beer-temp").textContent = beerTemp != null ? formatTemp(beerTemp, "C") : "--";
   document.getElementById("brew-fridge-temp").textContent = b.fridge_temp != null ? formatTemp(b.fridge_temp, "C") : "--";
-  document.getElementById("brew-sg").textContent = b.current_sg != null ? Math.round(b.current_sg * 1000) : "--";
+  document.getElementById("brew-sg").textContent = fmtG(b.current_sg);
   document.getElementById("brew-abv").textContent = b.current_abv != null ? b.current_abv.toFixed(1) + "%" : "--";
 
   const og = b.og;
-  document.getElementById("brew-og-display").textContent = og != null ? Math.round(og * 1000) : "--";
+  document.getElementById("brew-og-display").textContent = fmtG(og);
   document.getElementById("brew-target-display").textContent = b.target_beer_temp != null ? formatTemp(b.target_beer_temp, "C") : "--";
   document.getElementById("brew-fridge-target").textContent = b.controller_target != null ? formatTemp(b.controller_target, "C") : "--";
 
@@ -986,11 +1007,10 @@ function renderBrewDetail(b) {
   if (og && b.current_sg && b.current_sg > og) {
     const hint = document.getElementById("brew-og-hint");
     hint.style.display = "block";
-    hint.textContent = `SG reading ${Math.round(b.current_sg * 1000)} > OG ${Math.round(og * 1000)} -- update OG?`;
+    hint.textContent = `SG reading ${fmtG(b.current_sg)} > OG ${fmtG(og)} -- update OG?`;
     hint.style.cursor = "pointer";
     hint.onclick = () => {
-      const newOg = Math.round(b.current_sg * 1000);
-      if (confirm(`Update OG to ${newOg}?`)) {
+      if (confirm(`Update OG to ${fmtG(b.current_sg)}?`)) {
         updateBrewField(b.id, "og", b.current_sg);
       }
     };
@@ -1108,9 +1128,7 @@ function updateNeedleGauge(b) {
     });
     gFerm.setOption(opt);
   }
-  const ogLabel = og ? Math.round(og * 1000) : "--";
-  const sgLabel = sg ? Math.round(sg * 1000) : "--";
-  document.getElementById("gauge-og-sg-label").textContent = `OG ${ogLabel} \u2192 SG ${sgLabel}`;
+  document.getElementById("gauge-og-sg-label").textContent = `OG ${fmtG(og)} \u2192 SG ${fmtG(sg)}`;
 
   // --- Beer Temperature ---
   const beerTemp = b.beer_temp;
@@ -1125,11 +1143,11 @@ function updateNeedleGauge(b) {
     b.target_beer_temp != null ? `Target ${b.target_beer_temp}\u00b0C` : "--";
 
   // --- Specific Gravity ---
-  const sgVal = sg ? Math.round(sg * 1000) : 0;
-  const ogVal = og ? Math.round(og * 1000) : null;
+  const sgVal = sg ? parseFloat(sg.toFixed(3)) : 0;
+  const ogVal = og ? parseFloat(og.toFixed(3)) : null;
   const gSG = ensureGauge("gauge-sg");
   if (gSG) {
-    gSG.setOption(gaugeBase(1000, 1060, sgVal, "{value}",
+    gSG.setOption(gaugeBase(1.000, 1.060, sgVal, "{value}",
       [[0.25, "#2ea043"], [0.50, "#7ee787"], [0.75, "#d29922"], [1, "#f0883e"]],
       "#c9d1d9", "rgb(201,209,217)", ogVal));
   }
@@ -1551,10 +1569,9 @@ document.getElementById("icon-picker").addEventListener("click", (e) => {
 /* Edit OG and Target Temp inline */
 function editBrewOG() {
   if (!currentBrewId) return;
-  const newOg = prompt("Enter new OG (e.g. 1050):");
+  const newOg = prompt("Enter new OG (e.g. 1.050):");
   if (!newOg) return;
-  const ogFloat = parseFloat(newOg) / 1000;
-  updateBrewField(currentBrewId, "og", ogFloat);
+  updateBrewField(currentBrewId, "og", parseFloat(newOg));
 }
 
 function editBrewTargetTemp() {
@@ -1717,7 +1734,7 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
   if (results.sg?.length) {
     hasSG = true;
     let pts = mapPts(results.sg);
-    if (doFilter) pts = filterOutliers(pts, 2);
+    if (doFilter) pts = filterOutliers(pts, 0.002);
     datasets.push({
       label: "Specific Gravity",
       data: pts,
@@ -1953,9 +1970,9 @@ function renderBrewRecipePhoto(brew) {
 /* Brew action buttons */
 document.getElementById("btn-complete-brew").addEventListener("click", async () => {
   if (!currentBrewId) return;
-  const fgRaw = prompt("Enter Final Gravity (e.g. 1010) or leave blank:");
+  const fgRaw = prompt("Enter Final Gravity (e.g. 1.010) or leave blank:");
   const data = {};
-  if (fgRaw) data.fg = parseFloat(fgRaw) / 1000;
+  if (fgRaw) data.fg = parseFloat(fgRaw);
   try {
     await fetch(`/api/brews/${currentBrewId}/complete`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
@@ -2209,8 +2226,8 @@ async function loadLegendaryBrews() {
       return;
     }
     container.innerHTML = completed.map(b => {
-      const ogStr = b.og ? Math.round(b.og * 1000) : "--";
-      const fgStr = b.fg ? Math.round(b.fg * 1000) : "--";
+      const ogStr = fmtG(b.og);
+      const fgStr = fmtG(b.fg);
       const abvStr = (b.og && b.fg) ? ((b.og - b.fg) * 131.25).toFixed(1) + "%" : "--";
       const dateStr = b.started_at ? new Date(b.started_at).toLocaleDateString() : "--";
       const rating = b.rating || 0;

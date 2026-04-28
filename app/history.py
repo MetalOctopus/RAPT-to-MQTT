@@ -19,6 +19,11 @@ class HistoryStore:
     def _init_db(self):
         os.makedirs(CONFIG_DIR, exist_ok=True)
         with self._connect() as conn:
+            # Migrate SG values from integer (1013) to decimal (1.013)
+            conn.execute("""
+                UPDATE device_history SET value = value / 1000.0
+                WHERE metric = 'specificGravity' AND value > 2
+            """)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS device_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,

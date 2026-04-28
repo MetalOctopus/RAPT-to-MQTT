@@ -259,11 +259,11 @@ class RaptBridge:
                 if temp_changed:
                     reason.append(f"temp {last.get('temp', '?')}\u2192{temp_c}")
                 if sg_changed:
-                    reason.append(f"SG {round(last.get('sg', 0) * 1000)}\u2192{round(sg * 1000)}")
+                    reason.append(f"SG {last.get('sg', 0):.3f}\u2192{sg:.3f}")
 
                 self._logger.info(
                     f"TILT {color} | {temp_c}\u00b0C ({temp_f}\u00b0F) | "
-                    f"SG: {round(sg * 1000)} | "
+                    f"SG: {sg:.3f} | "
                     f"Recorded ({', '.join(reason)}) [{rx} msgs/{elapsed:.0f}s]"
                 )
 
@@ -272,7 +272,7 @@ class RaptBridge:
                     self._history.record(device_id, {
                         "temperature": temp_c,
                         "temperature_f": temp_f,
-                        "specificGravity": sg * 1000,
+                        "specificGravity": sg,
                     })
 
             # RSSI: record on its own lazy timer (every 5 min)

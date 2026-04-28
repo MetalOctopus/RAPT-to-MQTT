@@ -16,6 +16,7 @@ DEFAULTS = {
     "rapt_secret": "",
     "poll_interval": 300,
     "auto_start": True,
+    "gravity_unit": "sg",
 }
 
 # Environment variable name -> config key (or tuple with type converter)

@@ -101,6 +101,13 @@
             <input type="checkbox" id="auto_start" checked>
             <label for="auto_start">Auto-start on container launch</label>
           </div>
+          <div class="form-group">
+            <label for="gravity_unit">Gravity Display</label>
+            <select id="gravity_unit">
+              <option value="sg">Specific Gravity (1.050)</option>
+              <option value="plato">Plato (12.4°P)</option>
+            </select>
+          </div>
           <div class="form-group checkbox-group">
             <input type="checkbox" id="hide_affiliate_links">
             <label for="hide_affiliate_links">Hide product links (I already have my gear)</label>
@@ -203,7 +210,7 @@
           </div>
           <div class="form-group">
             <label for="brew-og">Original Gravity (OG)</label>
-            <input type="number" id="brew-og" placeholder="1050" step="1">
+            <input type="number" id="brew-og" placeholder="1.050" step="0.001" min="0.990" max="1.200">
           </div>
           <div class="form-group">
             <label for="brew-target-temp">Target Beer Temp (&deg;C)</label>
@@ -371,7 +378,7 @@
         </div>
         <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
           <button id="btn-brew-filter" class="btn-save btn-sm">Filter: ON</button>
-          <span class="help-text" style="line-height:1.4">Removes physically impossible spikes (e.g. a -20°C TILT reading or a sudden SG jump from sloshing). Filters any change faster than 2°C/min for temperature or 2 SG points/min. Turn off to see raw unfiltered data.</span>
+          <span class="help-text" style="line-height:1.4">Removes physically impossible spikes (e.g. a -20°C TILT reading or a sudden SG jump from sloshing). Filters any change faster than 2°C/min for temperature or 0.002 SG/min. Turn off to see raw unfiltered data.</span>
         </div>
       </div>
 
@@ -598,7 +605,7 @@
             </div>
             <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
               <button id="btn-tilt-sg-filter" class="btn-save btn-sm" onclick="toggleDeviceFilter('tilt-sg')">Filter: ON</button>
-              <span class="help-text">Removes impossible spikes (&gt;2 SG points/min). Turn off for raw data.</span>
+              <span class="help-text">Removes impossible spikes (&gt;0.002 SG/min). Turn off for raw data.</span>
             </div>
           </div>
         </div>

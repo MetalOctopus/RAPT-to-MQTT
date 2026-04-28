@@ -406,7 +406,7 @@ class BrewSession:
             return False
         values = [d["value"] for d in data]
         sg_range = max(values) - min(values)
-        return sg_range <= 2  # stable within 2 SG points (e.g. 1050 vs 1052)
+        return sg_range <= 0.002  # stable within 0.002 SG (e.g. 1.050 vs 1.052)
 
     def _fire_reminder(self, session, reminder):
         self._history.mark_reminder_fired(reminder["id"])

@@ -41,7 +41,7 @@ HomeAssistant/
 ## Key Conventions
 - Push to main directly (no feature branches)
 - Temperatures: Celsius first, e.g. "20.0°C (68°F)"
-- Specific gravity: whole numbers, e.g. 1025 not 1.0250
+- Specific gravity: decimal format, e.g. 1.025 not 1025. Supports SG/Plato toggle via config.
 - Round all device API values to 1 decimal (RAPT returns e.g. 17.4999904632568)
 - MQTT topics: `RAPT/temperatureController`, `RAPT/temperatureController/Command`, `TiltPi`, `RAPT2MQTT/notify`
 - All frontend is vanilla JS — no React/Vue/etc
