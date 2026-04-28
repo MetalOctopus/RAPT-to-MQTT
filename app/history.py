@@ -74,6 +74,18 @@ class HistoryStore:
                     created_at REAL NOT NULL
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS known_devices (
+                    device_id TEXT PRIMARY KEY,
+                    device_type TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    nickname TEXT,
+                    photo_path TEXT,
+                    last_state TEXT,
+                    last_seen REAL NOT NULL,
+                    created_at REAL NOT NULL
+                )
+            """)
 
     def _connect(self):
         conn = sqlite3.connect(DB_PATH, timeout=5)
@@ -228,3 +240,59 @@ class HistoryStore:
         with self._lock:
             with self._connect() as conn:
                 conn.execute("DELETE FROM brew_reminders WHERE id = ?", (reminder_id,))
+
+    # --- Known devices (persist across restarts) ---
+
+    def save_known_device(self, device_id, device_type, name, last_state_json):
+        """Upsert a known device. Called every time fresh data arrives."""
+        now = time.time()
+        with self._lock:
+            with self._connect() as conn:
+                existing = conn.execute(
+                    "SELECT nickname, photo_path, created_at FROM known_devices WHERE device_id = ?",
+                    (device_id,)
+                ).fetchone()
+                if existing:
+                    conn.execute(
+                        """UPDATE known_devices
+                           SET name = ?, last_state = ?, last_seen = ?, device_type = ?
+                           WHERE device_id = ?""",
+                        (name, last_state_json, now, device_type, device_id)
+                    )
+                else:
+                    conn.execute(
+                        """INSERT INTO known_devices
+                           (device_id, device_type, name, nickname, photo_path, last_state, last_seen, created_at)
+                           VALUES (?, ?, ?, NULL, NULL, ?, ?, ?)""",
+                        (device_id, device_type, name, last_state_json, now, now)
+                    )
+
+    def get_known_devices(self):
+        """Return all known devices as list of dicts."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT device_id, device_type, name, nickname, photo_path, last_state, last_seen, created_at "
+                "FROM known_devices ORDER BY name"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_device_config(self, device_id, nickname=None, photo_path=None):
+        """Update nickname and/or photo for a device."""
+        with self._lock:
+            with self._connect() as conn:
+                if nickname is not None:
+                    conn.execute(
+                        "UPDATE known_devices SET nickname = ? WHERE device_id = ?",
+                        (nickname, device_id)
+                    )
+                if photo_path is not None:
+                    conn.execute(
+                        "UPDATE known_devices SET photo_path = ? WHERE device_id = ?",
+                        (photo_path, device_id)
+                    )
+
+    def forget_device(self, device_id):
+        """Remove a device from known_devices. Does NOT delete history data."""
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM known_devices WHERE device_id = ?", (device_id,))

@@ -33,6 +33,7 @@
       <a class="nav-item" data-page="dashboard" href="#">Dashboard</a>
       <a class="nav-item" data-page="brews" href="#">Brews</a>
       <a class="nav-item nav-newbrew" data-page="newbrew" href="#">+Brew</a>
+      <a class="nav-item" data-page="devices" href="#">Devices</a>
       <a class="nav-item" data-page="about" href="#">About</a>
       <a class="nav-item" data-page="integrations" href="#">Integrations</a>
       <a class="nav-item" data-page="support" href="#">Support</a>
@@ -666,6 +667,42 @@
           <div class="btn-row">
             <button id="btn-set-pid" class="btn-save">Set PID Values</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Devices Management Page -->
+    <div id="page-devices" class="page">
+      <div class="panel">
+        <h2>Device Management</h2>
+        <p class="help-text">All devices that have ever connected to RAPT2MQTT. Customize names, add photos, or forget devices you no longer use.</p>
+      </div>
+      <div id="manage-device-list" class="manage-device-grid"></div>
+      <div id="manage-device-empty" class="panel" style="display:none">
+        <p class="help-text">No devices have been discovered yet. Start the bridge and connect a device.</p>
+      </div>
+    </div>
+
+    <!-- Device Edit Modal -->
+    <div id="device-edit-modal" class="modal-overlay" style="display:none">
+      <div class="modal-content">
+        <h3 id="modal-device-title">Edit Device</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="modal-nickname">Nickname</label>
+            <input type="text" id="modal-nickname" placeholder="e.g. Fermentation Fridge">
+          </div>
+          <div class="form-group">
+            <label for="modal-photo">Device Photo</label>
+            <input type="file" id="modal-photo" accept="image/*">
+          </div>
+          <div id="modal-photo-preview" style="display:none">
+            <img id="modal-photo-img" style="max-width:200px;border-radius:8px;margin-top:8px">
+          </div>
+        </div>
+        <div class="btn-row" style="margin-top:16px">
+          <button id="btn-modal-save" class="btn-save">Save</button>
+          <button id="btn-modal-cancel" class="btn-stop">Cancel</button>
         </div>
       </div>
     </div>

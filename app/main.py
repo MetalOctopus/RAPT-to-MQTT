@@ -6,7 +6,8 @@ import logging
 import logging.handlers
 import threading
 
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, send_from_directory
+from werkzeug.utils import secure_filename
 
 from app.config import (
     load_config, save_config, is_configured, mask_secret, LOG_DIR, CONFIG_DIR
@@ -209,6 +210,103 @@ def device_set_pid(device_id):
         return jsonify({"error": "Device not found"}), 404
     bridge.set_pid_values(device_id, float(data["p"]), float(data["i"]), float(data["d"]))
     return jsonify({"status": "ok"})
+
+
+# --- Device Management ---
+
+@app.route("/api/devices/manage", methods=["GET"])
+def get_managed_devices():
+    """Return all known devices with their live status and management config."""
+    live = bridge.devices
+    known = history.get_known_devices()
+    result = []
+    for kd in known:
+        did = kd["device_id"]
+        entry = {
+            "device_id": did,
+            "device_type": kd["device_type"],
+            "name": kd["name"],
+            "nickname": kd.get("nickname"),
+            "photo_path": kd.get("photo_path"),
+            "last_seen": kd["last_seen"],
+            "created_at": kd["created_at"],
+            "online": did in live and not live[did].get("_stale", False),
+        }
+        if did in live:
+            entry["live"] = {
+                "name": live[did].get("name"),
+                "temperature": live[did].get("temperature"),
+                "rssi": live[did].get("rssi"),
+            }
+        result.append(entry)
+    return jsonify(result)
+
+
+@app.route("/api/devices/<device_id>/manage", methods=["POST"])
+def update_device_management(device_id):
+    """Update nickname or photo for a device."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+    nickname = data.get("nickname")
+    photo_path = data.get("photo_path")
+    history.update_device_config(device_id, nickname=nickname, photo_path=photo_path)
+    # Update in-memory device so sidebar reflects immediately
+    with bridge._devices_lock:
+        dev = bridge._devices.get(device_id)
+        if dev and nickname is not None:
+            dev["_nickname"] = nickname if nickname else None
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/devices/<device_id>/forget", methods=["POST"])
+def forget_device(device_id):
+    """Remove a device from known devices. Clears it from sidebar on next refresh."""
+    history.forget_device(device_id)
+    # Also remove from in-memory devices if present
+    with bridge._devices_lock:
+        bridge._devices.pop(device_id, None)
+    return jsonify({"status": "ok"})
+
+
+PHOTO_DIR = os.path.join(CONFIG_DIR, "device_photos")
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+
+
+@app.route("/api/devices/<device_id>/photo", methods=["POST"])
+def upload_device_photo(device_id):
+    """Upload a photo for a device."""
+    if "photo" not in request.files:
+        return jsonify({"error": "No file"}), 400
+    f = request.files["photo"]
+    if not f.filename:
+        return jsonify({"error": "No file selected"}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify({"error": "File type not allowed"}), 400
+    os.makedirs(PHOTO_DIR, exist_ok=True)
+    safe_id = secure_filename(device_id)
+    filename = f"{safe_id}.{ext}"
+    # Remove old photos for this device (different extensions)
+    for old in os.listdir(PHOTO_DIR):
+        if old.startswith(safe_id + "."):
+            os.remove(os.path.join(PHOTO_DIR, old))
+    filepath = os.path.join(PHOTO_DIR, filename)
+    f.save(filepath)
+    history.update_device_config(device_id, photo_path=filename)
+    return jsonify({"status": "ok", "photo_path": filename})
+
+
+@app.route("/api/devices/<device_id>/photo", methods=["GET"])
+def get_device_photo(device_id):
+    """Serve a device photo."""
+    safe_id = secure_filename(device_id)
+    if not os.path.isdir(PHOTO_DIR):
+        return "", 404
+    for fname in os.listdir(PHOTO_DIR):
+        if fname.startswith(safe_id + "."):
+            return send_from_directory(PHOTO_DIR, fname)
+    return "", 404
 
 
 # --- History / Charts ---

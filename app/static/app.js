@@ -62,6 +62,7 @@ function showPage(page, id) {
     if (page === "brews") loadBrewsPage();
     if (page === "newbrew") { loadNewBrewForm(); applyAffiliateVisibility(); }
     if (page === "integrations") applyAffiliateVisibility();
+    if (page === "devices") loadManageDevices();
   }
 }
 
@@ -274,12 +275,17 @@ async function loadDevices() {
     deviceListEl.innerHTML = "";
     ids.forEach(id => {
       const dev = devices[id];
-      const name = dev.name || id.substring(0, 8);
+      const name = dev._nickname || dev.name || id.substring(0, 8);
+      const isStale = dev._stale === true;
       const el = document.createElement("a");
-      el.className = "nav-item" + (currentDeviceId === id ? " active" : "");
+      el.className = "nav-item" + (currentDeviceId === id ? " active" : "") + (isStale ? " stale" : "");
       el.setAttribute("data-device", id);
       el.href = "#";
-      el.innerHTML = esc(name) + rssiIcon(dev.rssi);
+      if (isStale) {
+        el.innerHTML = '<span class="status-dot offline"></span>' + esc(name);
+      } else {
+        el.innerHTML = esc(name) + rssiIcon(dev.rssi);
+      }
       el.addEventListener("click", (e) => { e.preventDefault(); showPage("device", id); });
       deviceListEl.appendChild(el);
     });
@@ -300,13 +306,45 @@ async function loadDevice(deviceId) {
 function renderDevice(dev) {
   const unit = dev.tempUnit || "C";
   const isTilt = dev.deviceType === "TILT";
+  const isStale = dev._stale === true;
 
-  document.getElementById("device-name").textContent = dev.name || "Unknown Device";
+  document.getElementById("device-name").textContent = dev._nickname || dev.name || "Unknown Device";
   const connBadge = document.getElementById("device-connection");
-  const connState = (dev.connectionState || "").toLowerCase();
-  const isOnline = connState === "connected" || connState === "online";
-  connBadge.textContent = isOnline ? "Online" : "Offline";
-  connBadge.className = "badge " + (isOnline ? "online" : "offline");
+  if (isStale) {
+    connBadge.textContent = "Offline";
+    connBadge.className = "badge offline";
+  } else {
+    const connState = (dev.connectionState || "").toLowerCase();
+    const isOnline = connState === "connected" || connState === "online";
+    connBadge.textContent = isOnline ? "Online" : "Offline";
+    connBadge.className = "badge " + (isOnline ? "online" : "offline");
+  }
+
+  // Stale banner
+  let staleBanner = document.getElementById("device-stale-banner");
+  if (isStale) {
+    if (!staleBanner) {
+      staleBanner = document.createElement("div");
+      staleBanner.id = "device-stale-banner";
+      staleBanner.className = "stale-banner";
+      const header = document.querySelector("#page-device .device-header");
+      header.parentNode.insertBefore(staleBanner, header.nextSibling);
+    }
+    const lastSeen = dev._last_seen ? new Date(dev._last_seen).toLocaleString() + " (" + timeAgo(dev._last_seen) + ")" : "unknown";
+    staleBanner.innerHTML = '<span class="stale-banner-icon">&#x26a0;</span> This device is offline. Last seen: ' + lastSeen + '. Showing last known data.';
+    staleBanner.style.display = "";
+  } else if (staleBanner) {
+    staleBanner.style.display = "none";
+  }
+
+  // Dim the overview when stale
+  const overview = document.getElementById("subtab-overview");
+  if (overview) overview.classList.toggle("stale-content", isStale);
+
+  // Hide control tab for stale devices
+  document.querySelectorAll('.sub-tab[data-subtab="control"]').forEach(t => {
+    t.style.display = isStale ? "none" : "";
+  });
 
   document.getElementById("card-target-temp").style.display = isTilt ? "none" : "";
   document.getElementById("card-gravity").style.display = isTilt ? "" : "none";
@@ -1936,6 +1974,137 @@ document.addEventListener("click", (e) => {
   }
 });
 
+/* --- Device Management --- */
+let editingDeviceId = null;
+
+async function loadManageDevices() {
+  try {
+    const res = await fetch("/api/devices/manage");
+    const devices = await res.json();
+    const grid = document.getElementById("manage-device-list");
+    const empty = document.getElementById("manage-device-empty");
+    if (!devices.length) {
+      grid.innerHTML = "";
+      empty.style.display = "";
+      return;
+    }
+    empty.style.display = "none";
+    grid.innerHTML = devices.map(d => {
+      const isLive = d.online;
+      const isTilt = d.device_type === "TILT";
+      const typeClass = isTilt ? "tilt" : "rapt";
+      const typeLabel = isTilt ? "TILT Hydrometer" : "RAPT Controller";
+      const displayName = d.nickname || d.name;
+      const lastSeen = d.last_seen ? new Date(d.last_seen * 1000).toLocaleString() : "Never";
+      const photoHtml = d.photo_path
+        ? `<img class="device-photo" src="/api/devices/${d.device_id}/photo" alt="${esc(displayName)}">`
+        : `<div class="device-photo-placeholder">${isTilt ? '&#x1F4A7;' : '&#x1F321;'}</div>`;
+      return `
+        <div class="manage-device-card${isLive ? '' : ' offline'}">
+          ${photoHtml}
+          <div class="device-meta">
+            <span class="name">${esc(displayName)}${!isLive ? ' <span class="status-dot offline" style="display:inline-block"></span>' : ' <span class="status-dot online" style="display:inline-block"></span>'}</span>
+            ${d.nickname ? `<span class="nickname">${esc(d.name)}</span>` : ''}
+            <span class="type-badge ${typeClass}">${typeLabel}</span>
+            <span class="nickname">Last seen: ${lastSeen}</span>
+          </div>
+          <div class="card-actions">
+            <button onclick="openDeviceEdit('${d.device_id}', '${esc(d.nickname || '')}', '${d.photo_path || ''}')">Edit</button>
+            <button onclick="showPage('device','${d.device_id}')">View</button>
+            <button class="btn-forget" onclick="forgetDevice('${d.device_id}', '${esc(displayName)}')">Forget</button>
+          </div>
+        </div>`;
+    }).join("");
+  } catch (e) {}
+}
+
+function openDeviceEdit(deviceId, nickname, photoPath) {
+  editingDeviceId = deviceId;
+  document.getElementById("modal-nickname").value = nickname;
+  const preview = document.getElementById("modal-photo-preview");
+  const img = document.getElementById("modal-photo-img");
+  if (photoPath) {
+    img.src = "/api/devices/" + deviceId + "/photo";
+    preview.style.display = "";
+  } else {
+    preview.style.display = "none";
+  }
+  document.getElementById("modal-photo").value = "";
+  document.getElementById("modal-device-title").textContent = "Edit Device";
+  document.getElementById("device-edit-modal").style.display = "";
+}
+
+function closeDeviceEdit() {
+  document.getElementById("device-edit-modal").style.display = "none";
+  editingDeviceId = null;
+}
+
+async function saveDeviceEdit() {
+  if (!editingDeviceId) return;
+  const nickname = document.getElementById("modal-nickname").value.trim();
+  const photoInput = document.getElementById("modal-photo");
+
+  // Save nickname
+  try {
+    await fetch("/api/devices/" + editingDeviceId + "/manage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nickname: nickname })
+    });
+  } catch (e) {}
+
+  // Upload photo if selected
+  if (photoInput.files.length > 0) {
+    const formData = new FormData();
+    formData.append("photo", photoInput.files[0]);
+    try {
+      await fetch("/api/devices/" + editingDeviceId + "/photo", {
+        method: "POST",
+        body: formData
+      });
+    } catch (e) {}
+  }
+
+  closeDeviceEdit();
+  loadManageDevices();
+  loadDevices();
+  showToast("Device updated", "success");
+}
+
+async function forgetDevice(deviceId, name) {
+  if (!confirm("Forget " + name + "? This removes it from the device list but keeps history data.")) return;
+  try {
+    const res = await fetch("/api/devices/" + deviceId + "/forget", { method: "POST" });
+    if (res.ok) {
+      showToast("Device forgotten", "success");
+      loadManageDevices();
+      loadDevices();
+    } else {
+      showToast("Failed to forget device", "error");
+    }
+  } catch (e) { showToast("Failed to forget device", "error"); }
+}
+
+// Modal button handlers
+document.getElementById("btn-modal-save").addEventListener("click", saveDeviceEdit);
+document.getElementById("btn-modal-cancel").addEventListener("click", closeDeviceEdit);
+document.getElementById("device-edit-modal").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) closeDeviceEdit();
+});
+
+// Photo preview
+document.getElementById("modal-photo").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      document.getElementById("modal-photo-img").src = ev.target.result;
+      document.getElementById("modal-photo-preview").style.display = "";
+    };
+    reader.readAsDataURL(file);
+  }
+});
+
 /* --- Nav click handlers --- */
 document.querySelectorAll("[data-page]").forEach(el => {
   el.addEventListener("click", (e) => { e.preventDefault(); showPage(el.getAttribute("data-page")); });
@@ -1959,4 +2128,5 @@ setInterval(() => {
   if (currentPage === "dashboard") updateDashboardCards();
   if (currentPage === "brew-detail" && currentBrewId) loadBrewDetail(currentBrewId);
   if (currentPage === "brews") loadBrewsPage();
+  if (currentPage === "devices") loadManageDevices();
 }, 10000);

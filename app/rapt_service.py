@@ -62,12 +62,39 @@ class RaptBridge:
     def update_config(self, config):
         self._config = config
 
+    def restore_known_devices(self):
+        """Load known devices from DB so they appear on dashboard before first ping."""
+        if not self._history:
+            return
+        known = self._history.get_known_devices()
+        with self._devices_lock:
+            for kd in known:
+                device_id = kd["device_id"]
+                if device_id in self._devices:
+                    continue  # Already have live data
+                try:
+                    last_state = json.loads(kd["last_state"]) if kd["last_state"] else {}
+                except (json.JSONDecodeError, TypeError):
+                    last_state = {}
+                last_state["_stale"] = True
+                last_state["_last_seen"] = datetime.fromtimestamp(kd["last_seen"]).isoformat()
+                last_state["_nickname"] = kd.get("nickname")
+                last_state["_photo_path"] = kd.get("photo_path")
+                if not last_state.get("id"):
+                    last_state["id"] = device_id
+                if not last_state.get("name"):
+                    last_state["name"] = kd.get("nickname") or kd["name"]
+                self._devices[device_id] = last_state
+        if known:
+            self._logger.info(f"Restored {len(known)} known device(s) from database.")
+
     def start(self):
         if self.is_running:
             self._logger.warning("Bridge is already running.")
             return
 
         self._logger.info("Starting RAPT2MQTT bridge...")
+        self.restore_known_devices()
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -186,7 +213,7 @@ class RaptBridge:
             else:
                 return
 
-            device_id = "tilt-hydrometer"
+            device_id = f"tilt-{color.lower()}" if color != "Unknown" else "tilt-unknown"
             name = f"TILT {color}" if color != "Unknown" else "TILT Hydrometer"
             if beer and beer.lower() not in ("", "untitled"):
                 name += f" ({beer})"
@@ -206,11 +233,15 @@ class RaptBridge:
                 "tiltBeer": beer,
                 "tiltUuid": uuid_str,
                 "_last_seen": datetime.now().isoformat(),
+                "_stale": False,
                 "_source": "mqtt",
             }
 
             # Always update in-memory device (cheap, keeps UI responsive)
             with self._devices_lock:
+                old = self._devices.get(device_id)
+                if old and old.get("_nickname"):
+                    device["_nickname"] = old["_nickname"]
                 self._devices[device_id] = device
 
             last = self._tilt_last.get(device_id, {})
@@ -252,6 +283,13 @@ class RaptBridge:
                     self._history.record(device_id, {"rssi": rssi})
 
             self._tilt_last[device_id] = last
+
+            # Persist to known_devices so it survives restarts
+            if self._history:
+                self._history.save_known_device(
+                    device_id, "tilt", name,
+                    json.dumps({k: v for k, v in device.items() if not k.startswith("_")})
+                )
 
         except Exception as e:
             self._logger.error(f"Error processing TILT message: {e}")
@@ -319,6 +357,7 @@ class RaptBridge:
             for controller in response:
                 cid = controller["id"]
                 controller["_last_seen"] = datetime.now().isoformat()
+                controller["_stale"] = False
 
                 # Infer actual heating/cooling mode from runtime deltas
                 cool_rt = controller.get("coolingRunTime", 0)
@@ -333,6 +372,10 @@ class RaptBridge:
                     controller["_heating_active"] = False
                 self._ctrl_last_runtimes[cid] = {"cooling": cool_rt, "heating": heat_rt}
 
+                # Preserve nickname from previous state
+                old = self._devices.get(cid)
+                if old and old.get("_nickname"):
+                    controller["_nickname"] = old["_nickname"]
                 self._devices[cid] = controller
 
         controller = response[0]
@@ -378,6 +421,11 @@ class RaptBridge:
                     "rssi": ctrl.get("rssi"),
                     "mode": mode_val,
                 })
+                # Persist to known_devices so it survives restarts
+                self._history.save_known_device(
+                    cid, "controller", ctrl.get("name", "Unknown"),
+                    json.dumps({k: v for k, v in ctrl.items() if not k.startswith("_")})
+                )
 
         return device_id
 
