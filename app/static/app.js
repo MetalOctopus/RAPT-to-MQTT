@@ -376,7 +376,8 @@ function renderDevice(dev) {
   }
 
   document.getElementById("info-name").textContent = dev.name || "--";
-  document.getElementById("info-type").textContent = dev.deviceType || "--";
+  const isTiltDev = dev.deviceType === "TILT";
+  document.getElementById("info-type").textContent = isTiltDev ? "Tilt Hydrometer" : (dev.deviceType ? "RAPT Temperature Controller" : "--");
   document.getElementById("info-use").textContent = dev.customerUse || "--";
   document.getElementById("info-mac").textContent = dev.macAddress || "--";
   document.getElementById("info-firmware").textContent = dev.firmwareVersion || "--";
@@ -461,8 +462,8 @@ async function loadTiltDefaultCharts(deviceId) {
         options: {
           responsive: true, maintainAspectRatio: false,
           scales: {
-            x: { type: "time", time: { tooltipFormat: "HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm" } },
-                 ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+            x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "MMM d, HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
+                 ticks: { color: "#8b949e", maxTicksLimit: 10 }, grid: { color: "#21262d" } },
             y: { grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
           },
           plugins: { legend: { labels: { color: "#c9d1d9" } } },
@@ -489,8 +490,8 @@ async function loadTiltDefaultCharts(deviceId) {
         options: {
           responsive: true, maintainAspectRatio: false,
           scales: {
-            x: { type: "time", time: { tooltipFormat: "HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm" } },
-                 ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+            x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "MMM d, HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
+                 ticks: { color: "#8b949e", maxTicksLimit: 10 }, grid: { color: "#21262d" } },
             y: { grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
           },
           plugins: { legend: { labels: { color: "#c9d1d9" } } },
@@ -642,8 +643,8 @@ async function addChartSeries(chartObj, seriesArr, canvasId, deviceId, metric, r
           responsive: true, maintainAspectRatio: false,
           interaction: { mode: "index", intersect: false },
           scales: {
-            x: { type: "time", time: { tooltipFormat: "HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm" } },
-                 ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+            x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "MMM d, HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
+                 ticks: { color: "#8b949e", maxTicksLimit: 10 }, grid: { color: "#21262d" } },
             y: { position: "left", grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
           },
           plugins: { legend: { labels: { color: "#c9d1d9" } } },
@@ -726,7 +727,7 @@ async function loadRssiChart(deviceId) {
       options: {
         responsive: true, maintainAspectRatio: false,
         scales: {
-          x: { type: "time", time: { tooltipFormat: "HH:mm:ss" }, ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+          x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "MMM d, HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } }, ticks: { color: "#8b949e", maxTicksLimit: 10 }, grid: { color: "#21262d" } },
           y: { grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
         },
         plugins: { legend: { labels: { color: "#c9d1d9" } } },
@@ -1746,8 +1747,8 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
   if (!datasets.length) return;
 
   const scales = {
-    x: { type: "time", time: { tooltipFormat: "HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm" } },
-         ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+    x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "MMM d, HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
+         ticks: { color: "#8b949e", maxTicksLimit: 10 }, grid: { color: "#21262d" } },
     y: { position: "left", grace: "10%", title: { display: true, text: "Temperature (\u00b0C)", color: "#8b949e" },
          ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
   };
@@ -2040,7 +2041,7 @@ async function loadManageDevices() {
       const isLive = d.online;
       const isTilt = d.device_type === "TILT";
       const typeClass = isTilt ? "tilt" : "rapt";
-      const typeLabel = isTilt ? "TILT Hydrometer" : "RAPT Controller";
+      const typeLabel = isTilt ? "Tilt Hydrometer" : "RAPT Temperature Controller";
       const displayName = d.nickname || d.name;
       const lastSeen = d.last_seen ? new Date(d.last_seen * 1000).toLocaleString() : "Never";
       const photoHtml = d.photo_path
