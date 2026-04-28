@@ -105,7 +105,7 @@ class HistoryStore:
                     rows
                 )
 
-    def query(self, device_id, metric, start=None, end=None, limit=10000):
+    def query(self, device_id, metric, start=None, end=None, limit=50000):
         """Query history for a device metric. Returns list of {timestamp, value}."""
         sql = "SELECT timestamp, value FROM device_history WHERE device_id = ? AND metric = ?"
         params = [device_id, metric]

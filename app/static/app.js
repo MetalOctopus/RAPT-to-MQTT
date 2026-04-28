@@ -45,7 +45,8 @@ function showPage(page, id) {
     loadDeviceMetrics(id);
   } else if (page === "brew-detail" && id) {
     document.getElementById("page-brew-detail").classList.add("active");
-    document.querySelector('[data-page="brews"]').classList.add("active");
+    const brewNav = document.querySelector(`.brew-nav[data-brew="${id}"]`);
+    if (brewNav) brewNav.classList.add("active");
     currentPage = "brew-detail";
     currentBrewId = id;
     currentDeviceId = null;
@@ -63,6 +64,7 @@ function showPage(page, id) {
     if (page === "newbrew") { loadNewBrewForm(); applyAffiliateVisibility(); }
     if (page === "integrations") applyAffiliateVisibility();
     if (page === "devices") loadManageDevices();
+    if (page === "legendary") loadLegendaryBrews();
   }
 }
 
@@ -473,7 +475,7 @@ async function loadTiltDefaultCharts(deviceId) {
     if (tiltSgChart) { tiltSgChart.destroy(); tiltSgChart = null; }
     if (sgData.length) {
       let pts = sgData.map(d => ({ x: d.timestamp * 1000, y: d.value }));
-      if (deviceFilterEnabled["tilt-sg"]) pts = filterOutliers(pts, 20);
+      if (deviceFilterEnabled["tilt-sg"]) pts = filterOutliers(pts, 5);
       const ctx2 = document.getElementById("tilt-sg-chart").getContext("2d");
       tiltSgChart = new Chart(ctx2, {
         type: "line",
@@ -611,13 +613,14 @@ async function loadChartMetrics(deviceId, selectId) {
 async function addChartSeries(chartObj, seriesArr, canvasId, deviceId, metric, range, axis) {
   try {
     const start = (Date.now() / 1000) - parseInt(range);
-    const limit = parseInt(range) >= 604800 ? 10000 : 5000;
+    const limit = parseInt(range) >= 604800 ? 50000 : 10000;
     const data = await (await fetch(`/api/history/${deviceId}/${metric}?start=${start}&limit=${limit}`)).json();
     if (!data.length) { showToast("No data for this range", "error"); return chartObj; }
 
     const color = chartColors[colorIdx++ % chartColors.length];
     const devices = window._cachedDevices || {};
-    const devName = devices[deviceId]?.name || deviceId.substring(0, 8);
+    const d = devices[deviceId];
+    const devName = d?._nickname || d?.name || deviceId.substring(0, 8);
 
     seriesArr.push({ deviceId, metric, range, axis, color });
 
@@ -882,7 +885,7 @@ async function loadNewBrewForm() {
       const dev = devices[id];
       const opt = document.createElement("option");
       opt.value = id;
-      opt.textContent = dev.name || id.substring(0, 8);
+      opt.textContent = dev._nickname || dev.name || id.substring(0, 8);
       if (dev.deviceType === "TILT") tiltSel.appendChild(opt);
       else ctrlSel.appendChild(opt);
     });
@@ -910,6 +913,7 @@ document.getElementById("btn-start-brew").addEventListener("click", async () => 
       document.getElementById("brew-og").value = "";
       document.getElementById("brew-target-temp").value = "";
       document.getElementById("brew-notes").value = "";
+      loadBrewNav();
       showPage("brew-detail", session.id);
     } else {
       const r = await res.json();
@@ -922,7 +926,7 @@ document.getElementById("btn-start-brew").addEventListener("click", async () => 
 async function loadBrewDetail(sessionId) {
   try {
     const res = await fetch(`/api/brews/${sessionId}`);
-    if (!res.ok) { showToast("Brew not found", "error"); showPage("brews"); return; }
+    if (!res.ok) { showToast("Brew not found", "error"); showPage("legendary"); return; }
     const b = await res.json();
     renderBrewDetail(b);
     // Default filter ON for new sessions
@@ -935,6 +939,18 @@ async function loadBrewDetail(sessionId) {
 
 function renderBrewDetail(b) {
   document.getElementById("brew-detail-name").textContent = b.name || "Untitled Brew";
+
+  const statusBadge = document.getElementById("brew-status-badge");
+  if (b.status === "active") {
+    statusBadge.textContent = "Active";
+    statusBadge.className = "badge online";
+  } else if (b.status === "completed") {
+    statusBadge.textContent = "Completed";
+    statusBadge.className = "badge";
+  } else {
+    statusBadge.textContent = b.status || "--";
+    statusBadge.className = "badge offline";
+  }
 
   const days = daysSince(b.started_at);
   document.getElementById("brew-detail-duration").textContent = `Day ${Math.floor(days)} (${formatSeconds(days * 86400)})`;
@@ -988,6 +1004,13 @@ function renderBrewDetail(b) {
 
   // Events (text-based brew log)
   renderBrewLog(b.events || [], b.started_at);
+
+  // Recipe photo
+  renderBrewRecipePhoto(b);
+
+  // Hide actions for completed/cancelled brews
+  const actionsPanel = document.getElementById("brew-actions-panel");
+  if (actionsPanel) actionsPanel.style.display = (b.status === "active") ? "" : "none";
 
   // Load feedback chart
   if (b.temp_feedback_enabled) loadFeedbackChart(b.id, true);
@@ -1563,7 +1586,7 @@ document.getElementById("btn-toggle-device-config").addEventListener("click", as
       const dev = devices[id];
       const opt = document.createElement("option");
       opt.value = id;
-      opt.textContent = dev.name || id.substring(0, 8);
+      opt.textContent = dev._nickname || dev.name || id.substring(0, 8);
       if (dev.deviceType === "TILT") tiltSel.appendChild(opt);
       else ctrlSel.appendChild(opt);
     });
@@ -1627,9 +1650,10 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
   if (!forceRebuild && (brewCharts[sessionId] || brewChartCleared[sessionId])) return;
   if (forceRebuild && brewCharts[sessionId]) { brewCharts[sessionId].destroy(); delete brewCharts[sessionId]; }
 
-  const range = parseInt(document.getElementById("brew-chart-range").value);
-  const start = (Date.now() / 1000) - range;
-  const limit = range >= 604800 ? 10000 : 5000;
+  // Use brew start date, not relative time — show entire fermentation
+  const brewStart = brew.started_at ? new Date(brew.started_at).getTime() / 1000 : (Date.now() / 1000) - 604800;
+  const start = brewStart;
+  const limit = 50000;
 
   const tiltId = brew.tilt_device_id;
   const ctrlId = brew.controller_device_id;
@@ -1886,6 +1910,27 @@ async function loadFeedbackChart(sessionId, forceReload) {
   } catch (e) {}
 }
 
+/* Recipe photo upload */
+document.getElementById("brew-recipe-photo-upload").addEventListener("change", async (e) => {
+  if (!currentBrewId || !e.target.files.length) return;
+  const formData = new FormData();
+  formData.append("photo", e.target.files[0]);
+  try {
+    await fetch(`/api/brews/${currentBrewId}/recipe-photo`, { method: "POST", body: formData });
+    showToast("Recipe photo uploaded", "success");
+    loadBrewDetail(currentBrewId);
+  } catch (e) { showToast("Upload failed", "error"); }
+});
+
+function renderBrewRecipePhoto(brew) {
+  const container = document.getElementById("brew-recipe-photo-container");
+  if (brew.recipe_photo) {
+    container.innerHTML = `<img src="/api/brews/${brew.id}/recipe-photo" style="width:100%;max-height:400px;object-fit:contain;border-radius:6px">`;
+  } else {
+    container.innerHTML = '<p class="help-text">No recipe photo yet. Upload one above.</p>';
+  }
+}
+
 /* Brew action buttons */
 document.getElementById("btn-complete-brew").addEventListener("click", async () => {
   if (!currentBrewId) return;
@@ -1897,7 +1942,8 @@ document.getElementById("btn-complete-brew").addEventListener("click", async () 
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
     });
     showToast("Brew completed!", "success");
-    showPage("brews");
+    loadBrewNav();
+    showPage("legendary");
   } catch (e) { showToast("Failed", "error"); }
 });
 
@@ -1907,7 +1953,8 @@ document.getElementById("btn-cancel-brew").addEventListener("click", async () =>
   try {
     await fetch(`/api/brews/${currentBrewId}/cancel`, { method: "POST" });
     showToast("Brew cancelled", "success");
-    showPage("brews");
+    loadBrewNav();
+    showPage("legendary");
   } catch (e) { showToast("Failed", "error"); }
 });
 
@@ -2115,18 +2162,147 @@ btnSave.addEventListener("click", saveConfig);
 btnStart.addEventListener("click", startBridge);
 btnStop.addEventListener("click", stopBridge);
 
+/* --- Brew Nav List --- */
+async function loadBrewNav() {
+  try {
+    const brews = await (await fetch("/api/brews")).json();
+    const navList = document.getElementById("brew-nav-list");
+    if (!brews.length) {
+      navList.innerHTML = '';
+      return;
+    }
+    const sorted = brews.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    navList.innerHTML = sorted.map(b => {
+      const active = currentPage === "brew-detail" && currentBrewId === b.id;
+      return `<a class="nav-item brew-nav${active ? ' active' : ''}" data-brew="${b.id}" href="#" onclick="event.preventDefault();showPage('brew-detail','${b.id}')">${esc(b.name)}</a>`;
+    }).join("");
+  } catch (e) {}
+}
+
+/* --- Legendary Brews --- */
+async function loadLegendaryBrews() {
+  try {
+    const data = await (await fetch("/api/brew/history")).json();
+    const completed = data.filter(b => b.status !== "active");
+    const container = document.getElementById("legendary-brew-list");
+    if (!completed.length) {
+      container.innerHTML = '<div class="panel"><p class="help-text">No legendary brews yet. Complete a brew session to start your hall of fame.</p></div>';
+      return;
+    }
+    container.innerHTML = completed.map(b => {
+      const ogStr = b.og ? Math.round(b.og * 1000) : "--";
+      const fgStr = b.fg ? Math.round(b.fg * 1000) : "--";
+      const abvStr = (b.og && b.fg) ? ((b.og - b.fg) * 131.25).toFixed(1) + "%" : "--";
+      const dateStr = b.started_at ? new Date(b.started_at).toLocaleDateString() : "--";
+      const rating = b.rating || 0;
+      const stars = renderStars(rating);
+      const photoHtml = b.recipe_photo
+        ? `<img class="legendary-photo" src="/api/brews/${b.id}/recipe-photo" alt="Recipe">`
+        : '';
+      return `
+        <div class="panel legendary-brew-card">
+          <div class="legendary-header">
+            <div>
+              <h3>${esc(b.name)}</h3>
+              <span class="help-text">${dateStr} &middot; ${b.status}</span>
+            </div>
+            <div class="legendary-stars" data-brew-id="${b.id}">${stars}</div>
+          </div>
+          ${photoHtml}
+          <div class="legendary-stats">
+            <span>OG: ${ogStr}</span>
+            <span>FG: ${fgStr}</span>
+            <span>ABV: ${abvStr}</span>
+          </div>
+          ${b.tasting_notes ? `<div class="legendary-notes"><strong>Tasting Notes</strong><p>${esc(b.tasting_notes)}</p></div>` : ''}
+          ${b.recipe ? `<div class="legendary-notes"><strong>Recipe</strong><p>${esc(b.recipe)}</p></div>` : ''}
+          ${b.brewing_notes ? `<div class="legendary-notes"><strong>Brewing Notes</strong><p>${esc(b.brewing_notes)}</p></div>` : ''}
+          <div class="card-actions" style="margin-top:12px">
+            <button onclick="editLegendaryBrew('${b.id}')">Edit Notes</button>
+            <button onclick="showPage('brew-detail','${b.id}')">View Details</button>
+          </div>
+        </div>`;
+    }).join("");
+  } catch (e) {}
+}
+
+function renderStars(rating) {
+  let html = '';
+  for (let i = 1; i <= 5; i++) {
+    html += `<span class="star${i <= rating ? ' filled' : ''}" onclick="rateBrew(this, ${i})">&#9733;</span>`;
+  }
+  return html;
+}
+
+async function rateBrew(el, rating) {
+  const brewId = el.parentElement.getAttribute("data-brew-id");
+  try {
+    await fetch(`/api/brews/${brewId}/rate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rating })
+    });
+    loadLegendaryBrews();
+  } catch (e) {}
+}
+
+async function editLegendaryBrew(brewId) {
+  try {
+    const brew = await (await fetch(`/api/brew/history`)).json();
+    const b = brew.find(x => x.id === brewId);
+    if (!b) return;
+    document.getElementById("legendary-edit-id").value = brewId;
+    document.getElementById("legendary-edit-tasting").value = b.tasting_notes || "";
+    document.getElementById("legendary-edit-recipe").value = b.recipe || "";
+    document.getElementById("legendary-edit-brewing").value = b.brewing_notes || "";
+    document.getElementById("legendary-edit-modal").style.display = "";
+  } catch (e) {}
+}
+
+function closeLegendaryEdit() {
+  document.getElementById("legendary-edit-modal").style.display = "none";
+}
+
+async function saveLegendaryEdit() {
+  const brewId = document.getElementById("legendary-edit-id").value;
+  const photoInput = document.getElementById("legendary-edit-photo");
+  const updates = {
+    tasting_notes: document.getElementById("legendary-edit-tasting").value,
+    recipe: document.getElementById("legendary-edit-recipe").value,
+    brewing_notes: document.getElementById("legendary-edit-brewing").value,
+  };
+  try {
+    await fetch(`/api/brews/${brewId}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates)
+    });
+    // Upload recipe photo if selected
+    if (photoInput && photoInput.files.length > 0) {
+      const formData = new FormData();
+      formData.append("photo", photoInput.files[0]);
+      await fetch(`/api/brews/${brewId}/recipe-photo`, { method: "POST", body: formData });
+    }
+    closeLegendaryEdit();
+    loadLegendaryBrews();
+    showToast("Brew notes saved", "success");
+  } catch (e) { showToast("Failed to save", "error"); }
+}
+
 /* --- Init --- */
 loadConfig();
 checkStatus();
 initConsole();
 loadDevices();
+loadBrewNav();
 
 // Periodic refreshes
 setInterval(checkStatus, 5000);
 setInterval(loadDevices, 10000);
+setInterval(loadBrewNav, 15000);
 setInterval(() => {
   if (currentPage === "dashboard") updateDashboardCards();
   if (currentPage === "brew-detail" && currentBrewId) loadBrewDetail(currentBrewId);
-  if (currentPage === "brews") loadBrewsPage();
+  if (currentPage === "legendary") loadLegendaryBrews();
   if (currentPage === "devices") loadManageDevices();
 }, 10000);

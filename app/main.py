@@ -337,6 +337,10 @@ def get_brew_detail(session_id):
     status = brew.get_brew_status(session_id)
     if status:
         return jsonify(status)
+    # Fall back to completed/cancelled brews from database
+    session_json = history.get_session(session_id)
+    if session_json:
+        return jsonify(json.loads(session_json))
     return jsonify({"error": "Brew not found"}), 404
 
 
@@ -579,8 +583,80 @@ def brew_history():
             "id": s["id"], "name": s["name"], "status": s["status"],
             "started_at": s.get("started_at"), "completed_at": s.get("completed_at"),
             "og": s.get("og"), "fg": s.get("fg"),
+            "rating": s.get("rating", 0),
+            "tasting_notes": s.get("tasting_notes", ""),
+            "recipe": s.get("recipe", ""),
+            "brewing_notes": s.get("brewing_notes", ""),
+            "recipe_photo": s.get("recipe_photo", ""),
         })
     return jsonify(result)
+
+
+@app.route("/api/brews/<session_id>/rate", methods=["POST"])
+def rate_brew(session_id):
+    data = request.get_json()
+    rating = data.get("rating", 0)
+    session_json = history.get_session(session_id)
+    if not session_json:
+        return jsonify({"error": "Brew not found"}), 404
+    s = json.loads(session_json)
+    s["rating"] = max(0, min(5, int(rating)))
+    history.save_session(session_id, json.dumps(s))
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/brews/<session_id>/notes", methods=["POST"])
+def update_brew_notes(session_id):
+    data = request.get_json()
+    session_json = history.get_session(session_id)
+    if not session_json:
+        return jsonify({"error": "Brew not found"}), 404
+    s = json.loads(session_json)
+    for field in ("tasting_notes", "recipe", "brewing_notes"):
+        if field in data:
+            s[field] = data[field]
+    history.save_session(session_id, json.dumps(s))
+    return jsonify({"status": "ok"})
+
+
+BREW_PHOTO_DIR = os.path.join(CONFIG_DIR, "brew_photos")
+
+
+@app.route("/api/brews/<session_id>/recipe-photo", methods=["POST"])
+def upload_brew_recipe_photo(session_id):
+    if "photo" not in request.files:
+        return jsonify({"error": "No file"}), 400
+    f = request.files["photo"]
+    if not f.filename:
+        return jsonify({"error": "No file selected"}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify({"error": "File type not allowed"}), 400
+    os.makedirs(BREW_PHOTO_DIR, exist_ok=True)
+    safe_id = secure_filename(session_id)
+    filename = f"{safe_id}.{ext}"
+    for old in os.listdir(BREW_PHOTO_DIR):
+        if old.startswith(safe_id + "."):
+            os.remove(os.path.join(BREW_PHOTO_DIR, old))
+    f.save(os.path.join(BREW_PHOTO_DIR, filename))
+    # Update brew session with photo reference
+    session_json = history.get_session(session_id)
+    if session_json:
+        s = json.loads(session_json)
+        s["recipe_photo"] = filename
+        history.save_session(session_id, json.dumps(s))
+    return jsonify({"status": "ok", "photo": filename})
+
+
+@app.route("/api/brews/<session_id>/recipe-photo", methods=["GET"])
+def get_brew_recipe_photo(session_id):
+    safe_id = secure_filename(session_id)
+    if not os.path.isdir(BREW_PHOTO_DIR):
+        return "", 404
+    for fname in os.listdir(BREW_PHOTO_DIR):
+        if fname.startswith(safe_id + "."):
+            return send_from_directory(BREW_PHOTO_DIR, fname)
+    return "", 404
 
 
 # --- Logs ---

@@ -146,7 +146,7 @@ class BrewSession:
             sg = tilt.get("specificGravity")
             session["current_sg"] = sg
             session["beer_temp"] = tilt.get("temperature")
-            session["tilt_name"] = tilt.get("name", "Hydrometer")
+            session["tilt_name"] = tilt.get("_nickname") or tilt.get("name", "Hydrometer")
             if sg and session.get("og"):
                 session["current_abv"] = round((session["og"] - sg) * 131.25, 2)
 
@@ -155,7 +155,7 @@ class BrewSession:
             ctrl = devices[ctrl_id]
             session["fridge_temp"] = ctrl.get("temperature")
             session["controller_target"] = ctrl.get("targetTemperature")
-            session["controller_name"] = ctrl.get("name", "Controller")
+            session["controller_name"] = ctrl.get("_nickname") or ctrl.get("name", "Controller")
             session["compressor_delay"] = ctrl.get("compressorDelay")
             session["cooling_hysteresis"] = ctrl.get("coolingHysteresis")
             session["heating_hysteresis"] = ctrl.get("heatingHysteresis")
@@ -260,7 +260,7 @@ class BrewSession:
                 ctrl = devices.get(ctrl_id)
 
                 if not tilt or not ctrl:
-                    self._logger.warning("Feedback: waiting for device data...")
+                    self._logger.info("Feedback: waiting for device data...")
                     stop_event.wait(timeout=60)
                     continue
 
