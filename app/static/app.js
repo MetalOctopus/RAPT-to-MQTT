@@ -515,7 +515,7 @@ async function loadTiltDefaultCharts(deviceId) {
             x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
                  ticks: { color: "#8b949e", maxTicksLimit: 12, major: { enabled: true }, font: ctx => ctx.tick && ctx.tick.major ? { weight: "bold", size: 11 } : { size: 10 },
                    callback: function(val, idx, ticks) { const d = new Date(val); const hm = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); if (ticks[idx] && ticks[idx].major) { const mon = d.toLocaleString("en",{month:"short"}); return [mon + " " + d.getDate(), hm]; } return hm; } }, grid: { color: "#21262d" } },
-            y: { grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+            y: { grace: "10%", ticks: { color: "#8b949e", callback: v => v.toFixed(3) }, grid: { color: "#21262d" } },
           },
           plugins: { legend: { labels: { color: "#c9d1d9" } } },
         },
@@ -657,6 +657,10 @@ async function addChartSeries(chartObj, seriesArr, canvasId, deviceId, metric, r
       yAxisID: axis === "right" ? "y1" : "y",
     };
 
+    const isSG = metric.toLowerCase().includes("gravity");
+    const sgTicks = { color: "#8b949e", callback: v => v.toFixed(3) };
+    const defaultTicks = { color: "#8b949e" };
+
     if (!chartObj) {
       const ctx = document.getElementById(canvasId).getContext("2d");
       const cfg = {
@@ -669,19 +673,19 @@ async function addChartSeries(chartObj, seriesArr, canvasId, deviceId, metric, r
             x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
                  ticks: { color: "#8b949e", maxTicksLimit: 12, major: { enabled: true }, font: ctx => ctx.tick && ctx.tick.major ? { weight: "bold", size: 11 } : { size: 10 },
                    callback: function(val, idx, ticks) { const d = new Date(val); const hm = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); if (ticks[idx] && ticks[idx].major) { const mon = d.toLocaleString("en",{month:"short"}); return [mon + " " + d.getDate(), hm]; } return hm; } }, grid: { color: "#21262d" } },
-            y: { position: "left", grace: "10%", ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+            y: { position: "left", grace: "10%", ticks: isSG && axis !== "right" ? sgTicks : defaultTicks, grid: { color: "#21262d" } },
           },
           plugins: { legend: { labels: { color: "#c9d1d9" } } },
         },
       };
       if (axis === "right") {
-        cfg.options.scales.y1 = { position: "right", grace: "10%", ticks: { color: "#8b949e" }, grid: { drawOnChartArea: false } };
+        cfg.options.scales.y1 = { position: "right", grace: "10%", ticks: isSG ? sgTicks : defaultTicks, grid: { drawOnChartArea: false } };
       }
       return new Chart(ctx, cfg);
     } else {
       chartObj.data.datasets.push(dataset);
       if (axis === "right" && !chartObj.options.scales.y1) {
-        chartObj.options.scales.y1 = { position: "right", ticks: { color: "#8b949e" }, grid: { drawOnChartArea: false } };
+        chartObj.options.scales.y1 = { position: "right", ticks: isSG ? sgTicks : defaultTicks, grid: { drawOnChartArea: false } };
       }
       chartObj.update();
       return chartObj;
@@ -1776,7 +1780,7 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
   };
   if (hasSG) {
     scales.y1 = { position: "right", grace: "10%", title: { display: true, text: "Specific Gravity", color: "#8b949e" },
-                  ticks: { color: "#8b949e", callback: v => Math.round(v) }, grid: { drawOnChartArea: false } };
+                  ticks: { color: "#8b949e", callback: v => v.toFixed(3) }, grid: { drawOnChartArea: false } };
   }
   if (hasMode) {
     scales.yMode = { display: false, min: -1.5, max: 1.5 };
@@ -1905,7 +1909,7 @@ async function loadFeedbackChart(sessionId, forceReload) {
           // Controller target — what we told the fridge to do via RAPT API
           { label: "Controller Target (what we sent)",
             data: pts.map(d => ({ x: d.timestamp * 1000, y: d.new_controller_target })),
-            borderColor: "#58a6ff", borderWidth: 2, pointRadius: 0,
+            borderColor: "#58a6ff", borderWidth: 2, borderDash: [8, 4], pointRadius: 0,
             stepped: "before", fill: false, order: 4 },
           // Fridge air — what the controller's probe reads
           { label: "Fridge Air Temp",
