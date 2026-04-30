@@ -1964,12 +1964,31 @@ document.getElementById("brew-recipe-photo-upload").addEventListener("change", a
 });
 
 function renderBrewRecipePhoto(brew) {
+  // Recipe text
+  const textArea = document.getElementById("brew-recipe-text");
+  if (textArea) textArea.value = brew.recipe || "";
+
+  // Recipe photo
   const container = document.getElementById("brew-recipe-photo-container");
   if (brew.recipe_photo) {
     container.innerHTML = `<img src="/api/brews/${brew.id}/recipe-photo" style="width:100%;max-height:400px;object-fit:contain;border-radius:6px">`;
   } else {
-    container.innerHTML = '<p class="help-text">No recipe photo yet. Upload one above.</p>';
+    container.innerHTML = '<p class="help-text">No recipe photo yet.</p>';
   }
+}
+
+async function saveBrewRecipe() {
+  if (!currentBrewId) return;
+  const recipe = document.getElementById("brew-recipe-text").value;
+  try {
+    const res = await fetch(`/api/brews/${currentBrewId}/notes`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({recipe}),
+    });
+    if (res.ok) showToast("Recipe saved", "success");
+    else showToast("Save failed", "error");
+  } catch (e) { showToast("Save failed", "error"); }
 }
 
 /* Brew action buttons */

@@ -646,6 +646,9 @@ def update_brew_notes(session_id):
     for field in ("tasting_notes", "recipe", "brewing_notes"):
         if field in data:
             s[field] = data[field]
+            # Also update in-memory session so active brews don't overwrite on next save
+            if session_id in brew._active_sessions:
+                brew._active_sessions[session_id][field] = data[field]
     history.save_session(session_id, json.dumps(s))
     return jsonify({"status": "ok"})
 

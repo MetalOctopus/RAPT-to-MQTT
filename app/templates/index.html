@@ -485,9 +485,15 @@
         <div id="reminder-list" style="margin-top:12px"></div>
       </div>
 
-      <!-- Recipe Photo -->
+      <!-- Recipe -->
       <div class="panel">
         <h2>Recipe</h2>
+        <div class="form-group">
+          <textarea id="brew-recipe-text" rows="6" placeholder="Grain bill, hops, yeast, water profile, mash temps..."></textarea>
+        </div>
+        <div class="btn-row" style="margin-bottom:12px">
+          <button id="btn-save-recipe" class="btn-save" onclick="saveBrewRecipe()">Save Recipe</button>
+        </div>
         <div id="brew-recipe-photo-container"></div>
         <div class="form-group" style="margin-top:8px">
           <label for="brew-recipe-photo-upload">Upload recipe photo</label>
