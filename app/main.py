@@ -750,17 +750,29 @@ def scan_tiltpi():
     targets = data.get("targets", [])
 
     if not targets:
-        # Auto-detect: scan common local subnets based on our own IP
+        subnets = set()
+        # Use MQTT broker IP subnet as primary hint (same LAN as brewing gear)
+        cfg = load_config()
+        mqtt_host = cfg.get("mqtt_host", "")
+        if mqtt_host and not mqtt_host.startswith("127."):
+            try:
+                mqtt_ip = socket.gethostbyname(mqtt_host)
+                subnets.add(".".join(mqtt_ip.split(".")[:3]))
+            except Exception:
+                pass
+        # Also try our own IP (may be Docker bridge — less useful)
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             my_ip = s.getsockname()[0]
             s.close()
-            # Scan /24 subnet
-            base = ".".join(my_ip.split(".")[:3])
-            targets = [f"{base}.{i}" for i in range(1, 255)]
+            subnets.add(".".join(my_ip.split(".")[:3]))
         except Exception:
-            targets = [f"192.168.0.{i}" for i in range(1, 255)]
+            pass
+        if not subnets:
+            subnets.add("192.168.0")
+        for base in subnets:
+            targets.extend(f"{base}.{i}" for i in range(1, 255))
 
     # Also try mDNS hostname
     try:
