@@ -1035,7 +1035,8 @@ function renderBrewDetail(b) {
   // Events (text-based brew log)
   renderBrewLog(b.events || [], b.started_at);
 
-  // Recipe photo
+  // Brew photo + Recipe
+  renderBrewPhoto(b);
   renderBrewRecipePhoto(b);
 
   // Hide actions for completed/cancelled brews
@@ -1977,6 +1978,29 @@ function renderBrewRecipePhoto(brew) {
   }
 }
 
+function renderBrewPhoto(brew) {
+  const wrapper = document.getElementById("brew-photo-wrapper");
+  const placeholder = document.getElementById("brew-photo-placeholder");
+  if (!wrapper) return;
+  if (brew.brew_photo) {
+    placeholder.innerHTML = `<img class="brew-hero-photo" src="/api/brews/${brew.id}/brew-photo?t=${Date.now()}">`;
+  } else {
+    placeholder.innerHTML = '<span class="brew-photo-icon">&#x1F37A;</span>';
+  }
+}
+
+/* Brew photo upload */
+document.getElementById("brew-photo-upload").addEventListener("change", async (e) => {
+  if (!currentBrewId || !e.target.files.length) return;
+  const formData = new FormData();
+  formData.append("photo", e.target.files[0]);
+  try {
+    await fetch(`/api/brews/${currentBrewId}/brew-photo`, { method: "POST", body: formData });
+    showToast("Beer photo uploaded", "success");
+    loadBrewDetail(currentBrewId);
+  } catch (e) { showToast("Upload failed", "error"); }
+});
+
 async function saveBrewRecipe() {
   if (!currentBrewId) return;
   const recipe = document.getElementById("brew-recipe-text").value;
@@ -2240,50 +2264,89 @@ async function loadBrewNav() {
 }
 
 /* --- Legendary Brews --- */
+let legendaryBrewsCache = [];
+
 async function loadLegendaryBrews() {
   try {
     const data = await (await fetch("/api/brew/history")).json();
-    const completed = data.filter(b => b.status !== "active");
-    const container = document.getElementById("legendary-brew-list");
-    if (!completed.length) {
-      container.innerHTML = '<div class="panel"><p class="help-text">No legendary brews yet. Complete a brew session to start your hall of fame.</p></div>';
-      return;
-    }
-    container.innerHTML = completed.map(b => {
-      const ogStr = fmtG(b.og);
-      const fgStr = fmtG(b.fg);
-      const abvStr = (b.og && b.fg) ? ((b.og - b.fg) * 131.25).toFixed(1) + "%" : "--";
-      const dateStr = b.started_at ? new Date(b.started_at).toLocaleDateString() : "--";
-      const rating = b.rating || 0;
-      const stars = renderStars(rating);
-      const photoHtml = b.recipe_photo
-        ? `<img class="legendary-photo" src="/api/brews/${b.id}/recipe-photo" alt="Recipe">`
-        : '';
-      return `
-        <div class="panel legendary-brew-card">
-          <div class="legendary-header">
-            <div>
-              <h3>${esc(b.name)}</h3>
-              <span class="help-text">${dateStr} &middot; ${b.status}</span>
-            </div>
-            <div class="legendary-stars" data-brew-id="${b.id}">${stars}</div>
-          </div>
-          ${photoHtml}
-          <div class="legendary-stats">
-            <span>OG: ${ogStr}</span>
-            <span>FG: ${fgStr}</span>
-            <span>ABV: ${abvStr}</span>
-          </div>
-          ${b.tasting_notes ? `<div class="legendary-notes"><strong>Tasting Notes</strong><p>${esc(b.tasting_notes)}</p></div>` : ''}
-          ${b.recipe ? `<div class="legendary-notes"><strong>Recipe</strong><p>${esc(b.recipe)}</p></div>` : ''}
-          ${b.brewing_notes ? `<div class="legendary-notes"><strong>Brewing Notes</strong><p>${esc(b.brewing_notes)}</p></div>` : ''}
-          <div class="card-actions" style="margin-top:12px">
-            <button onclick="editLegendaryBrew('${b.id}')">Edit Notes</button>
-            <button onclick="showPage('brew-detail','${b.id}')">View Details</button>
-          </div>
-        </div>`;
-    }).join("");
+    legendaryBrewsCache = data.filter(b => b.status !== "active");
+    filterLegendaryBrews();
   } catch (e) {}
+}
+
+function filterLegendaryBrews() {
+  const query = (document.getElementById("legendary-search").value || "").toLowerCase();
+  const sort = document.getElementById("legendary-sort").value;
+  const container = document.getElementById("legendary-brew-list");
+
+  let brews = legendaryBrewsCache.slice();
+
+  // Filter
+  if (query) {
+    brews = brews.filter(b =>
+      (b.name || "").toLowerCase().includes(query) ||
+      (b.tasting_notes || "").toLowerCase().includes(query) ||
+      (b.recipe || "").toLowerCase().includes(query) ||
+      (b.brewing_notes || "").toLowerCase().includes(query)
+    );
+  }
+
+  // Sort
+  if (sort === "newest") brews.sort((a, b) => (b.started_at || "").localeCompare(a.started_at || ""));
+  else if (sort === "oldest") brews.sort((a, b) => (a.started_at || "").localeCompare(b.started_at || ""));
+  else if (sort === "rating") brews.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  else if (sort === "name") brews.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  else if (sort === "abv") brews.sort((a, b) => {
+    const abvA = (a.og && a.fg) ? (a.og - a.fg) * 131.25 : 0;
+    const abvB = (b.og && b.fg) ? (b.og - b.fg) * 131.25 : 0;
+    return abvB - abvA;
+  });
+
+  if (!brews.length) {
+    container.innerHTML = '<div class="panel"><p class="help-text">' +
+      (query ? 'No brews match your search.' : 'No legendary brews yet. Complete a brew session to start your hall of fame.') +
+      '</p></div>';
+    return;
+  }
+
+  container.innerHTML = brews.map(b => {
+    const abvStr = (b.og && b.fg) ? ((b.og - b.fg) * 131.25).toFixed(1) + "%" : "--";
+    const dateStr = b.started_at ? new Date(b.started_at).toLocaleDateString() : "--";
+    const rating = b.rating || 0;
+    const stars = renderStars(rating);
+
+    // Brew photo takes priority, then recipe photo, then big text fallback
+    let photoSection;
+    if (b.brew_photo) {
+      photoSection = `<div class="legendary-tile-photo"><img src="/api/brews/${b.id}/brew-photo" alt="${esc(b.name)}"></div>`;
+    } else if (b.recipe_photo) {
+      photoSection = `<div class="legendary-tile-photo"><img src="/api/brews/${b.id}/recipe-photo" alt="${esc(b.name)}"></div>`;
+    } else {
+      photoSection = `<div class="legendary-tile-nophoto"><span class="legendary-tile-bigname">${esc(b.name)}</span></div>`;
+    }
+
+    return `
+      <div class="legendary-tile" onclick="showPage('brew-detail','${b.id}')">
+        ${photoSection}
+        <div class="legendary-tile-body">
+          <div class="legendary-tile-header">
+            <h3>${esc(b.name)}</h3>
+            <div class="legendary-stars" data-brew-id="${b.id}" onclick="event.stopPropagation()">${stars}</div>
+          </div>
+          <div class="legendary-tile-meta">
+            <span>${dateStr}</span>
+            <span>ABV: ${abvStr}</span>
+            <span>OG: ${fmtG(b.og)}</span>
+            <span>FG: ${fmtG(b.fg)}</span>
+          </div>
+          ${b.tasting_notes ? `<p class="legendary-tile-notes">${esc(b.tasting_notes)}</p>` : ''}
+          <div class="card-actions" onclick="event.stopPropagation()">
+            <button onclick="editLegendaryBrew('${b.id}')">Edit</button>
+            <button onclick="showPage('brew-detail','${b.id}')">Details</button>
+          </div>
+        </div>
+      </div>`;
+  }).join("");
 }
 
 function renderStars(rating) {
@@ -2325,7 +2388,8 @@ function closeLegendaryEdit() {
 
 async function saveLegendaryEdit() {
   const brewId = document.getElementById("legendary-edit-id").value;
-  const photoInput = document.getElementById("legendary-edit-photo");
+  const recipePhotoInput = document.getElementById("legendary-edit-photo");
+  const brewPhotoInput = document.getElementById("legendary-edit-brew-photo");
   const updates = {
     tasting_notes: document.getElementById("legendary-edit-tasting").value,
     recipe: document.getElementById("legendary-edit-recipe").value,
@@ -2337,10 +2401,16 @@ async function saveLegendaryEdit() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates)
     });
-    // Upload recipe photo if selected
-    if (photoInput && photoInput.files.length > 0) {
+    // Upload brew photo if selected
+    if (brewPhotoInput && brewPhotoInput.files.length > 0) {
       const formData = new FormData();
-      formData.append("photo", photoInput.files[0]);
+      formData.append("photo", brewPhotoInput.files[0]);
+      await fetch(`/api/brews/${brewId}/brew-photo`, { method: "POST", body: formData });
+    }
+    // Upload recipe photo if selected
+    if (recipePhotoInput && recipePhotoInput.files.length > 0) {
+      const formData = new FormData();
+      formData.append("photo", recipePhotoInput.files[0]);
       await fetch(`/api/brews/${brewId}/recipe-photo`, { method: "POST", body: formData });
     }
     closeLegendaryEdit();

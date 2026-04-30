@@ -619,8 +619,51 @@ def brew_history():
             "recipe": s.get("recipe", ""),
             "brewing_notes": s.get("brewing_notes", ""),
             "recipe_photo": s.get("recipe_photo", ""),
+            "brew_photo": s.get("brew_photo", ""),
         })
     return jsonify(result)
+
+
+@app.route("/api/brews/<session_id>/brew-photo", methods=["POST"])
+def upload_brew_photo(session_id):
+    """Upload a photo of the beer itself (label, glass, fermenter, etc.)."""
+    if "photo" not in request.files:
+        return jsonify({"error": "No file"}), 400
+    f = request.files["photo"]
+    if not f.filename:
+        return jsonify({"error": "No file selected"}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify({"error": "File type not allowed"}), 400
+    os.makedirs(BREW_PHOTO_DIR, exist_ok=True)
+    safe_id = secure_filename(session_id)
+    filename = f"brew_{safe_id}.{ext}"
+    # Remove old brew photos for this session
+    for old in os.listdir(BREW_PHOTO_DIR):
+        if old.startswith(f"brew_{safe_id}."):
+            os.remove(os.path.join(BREW_PHOTO_DIR, old))
+    f.save(os.path.join(BREW_PHOTO_DIR, filename))
+    # Update session
+    session_json = history.get_session(session_id)
+    if session_json:
+        s = json.loads(session_json)
+        s["brew_photo"] = filename
+        history.save_session(session_id, json.dumps(s))
+    if session_id in brew._active_sessions:
+        brew._active_sessions[session_id]["brew_photo"] = filename
+    return jsonify({"status": "ok", "photo": filename})
+
+
+@app.route("/api/brews/<session_id>/brew-photo", methods=["GET"])
+def get_brew_photo(session_id):
+    """Serve the brew photo."""
+    safe_id = secure_filename(session_id)
+    if not os.path.isdir(BREW_PHOTO_DIR):
+        return "", 404
+    for fname in os.listdir(BREW_PHOTO_DIR):
+        if fname.startswith(f"brew_{safe_id}."):
+            return send_from_directory(BREW_PHOTO_DIR, fname)
+    return "", 404
 
 
 @app.route("/api/brews/<session_id>/rate", methods=["POST"])

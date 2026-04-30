@@ -247,10 +247,21 @@
     <!-- Brew Detail Page (single brew view) -->
     <div id="page-brew-detail" class="page">
       <div class="panel">
-        <div class="device-header">
-          <h2 id="brew-detail-name">--</h2>
-          <span id="brew-status-badge" class="badge online">Active</span>
-          <span id="brew-detail-duration" class="help-text" style="margin-left:auto"></span>
+        <div class="brew-hero">
+          <div class="brew-photo-wrapper" id="brew-photo-wrapper">
+            <div class="brew-photo-placeholder" id="brew-photo-placeholder">
+              <span class="brew-photo-icon">&#x1F37A;</span>
+            </div>
+            <label class="brew-photo-upload-overlay" for="brew-photo-upload" title="Upload beer photo">
+              &#x1F4F7;
+            </label>
+            <input type="file" id="brew-photo-upload" accept="image/*" capture="environment" style="display:none">
+          </div>
+          <div class="brew-hero-info">
+            <h2 id="brew-detail-name">--</h2>
+            <span id="brew-status-badge" class="badge online">Active</span>
+            <span id="brew-detail-duration" class="help-text"></span>
+          </div>
         </div>
       </div>
 
@@ -497,7 +508,7 @@
         <div id="brew-recipe-photo-container"></div>
         <div class="form-group" style="margin-top:8px">
           <label for="brew-recipe-photo-upload">Upload recipe photo</label>
-          <input type="file" id="brew-recipe-photo-upload" accept="image/*">
+          <input type="file" id="brew-recipe-photo-upload" accept="image/*" capture="environment">
         </div>
       </div>
 
@@ -525,8 +536,18 @@
       <div class="panel">
         <h2>Legendary Brews</h2>
         <p class="help-text">Your completed brews, rated and documented for posterity. Every great beer deserves a story.</p>
+        <div class="legendary-toolbar">
+          <input type="text" id="legendary-search" placeholder="Search brews..." oninput="filterLegendaryBrews()">
+          <select id="legendary-sort" onchange="filterLegendaryBrews()">
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="rating">Highest Rated</option>
+            <option value="name">Name A-Z</option>
+            <option value="abv">Highest ABV</option>
+          </select>
+        </div>
       </div>
-      <div id="legendary-brew-list"></div>
+      <div id="legendary-brew-list" class="legendary-grid"></div>
     </div>
 
     <!-- Legendary Brew Edit Modal -->
@@ -548,8 +569,12 @@
             <textarea id="legendary-edit-brewing" rows="3" placeholder="Mash temps, boil time, lessons learned..."></textarea>
           </div>
           <div class="form-group" style="grid-column:1/-1">
+            <label for="legendary-edit-brew-photo">Beer Photo</label>
+            <input type="file" id="legendary-edit-brew-photo" accept="image/*" capture="environment">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
             <label for="legendary-edit-photo">Recipe Photo</label>
-            <input type="file" id="legendary-edit-photo" accept="image/*">
+            <input type="file" id="legendary-edit-photo" accept="image/*" capture="environment">
           </div>
         </div>
         <div class="btn-row" style="margin-top:16px">
