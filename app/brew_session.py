@@ -288,7 +288,30 @@ class BrewSession:
                     continue
 
                 error = target_beer - beer_temp
-                adjustment = error * gain
+                cool_hyst = session.get("cooling_hysteresis", 1.0)
+                heat_hyst = session.get("heating_hysteresis", 1.0)
+                distance = abs(error)
+
+                # Adaptive gain: punch hard when far, ease off when close
+                if distance > 1.0:
+                    effective_gain = gain * 1.5
+                elif distance > deadband:
+                    effective_gain = gain * 0.8
+                else:
+                    effective_gain = 0
+
+                adjustment = error * effective_gain
+
+                # Ensure correction exceeds hardware hysteresis so the
+                # compressor/heater actually kicks in
+                if abs(adjustment) > 0:
+                    if error < 0:  # beer too warm, need cooling
+                        min_correction = cool_hyst + 0.5
+                    else:          # beer too cold, need heating
+                        min_correction = heat_hyst + 0.5
+                    if abs(adjustment) < min_correction:
+                        adjustment = min_correction * (-1 if error < 0 else 1)
+
                 new_target = round(target_beer + adjustment, 1)
                 new_target = max(temp_min, min(temp_max, new_target))
 
