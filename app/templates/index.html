@@ -39,6 +39,7 @@
     <div class="nav-section">
       <div class="nav-label">Devices</div>
       <a class="nav-item" data-page="devices" href="#">Device Management</a>
+      <a class="nav-item" data-page="tiltpi" href="#">TiltPi Setup</a>
       <div id="device-list" class="device-list">
         <div class="nav-item dim">No devices discovered</div>
       </div>
@@ -773,6 +774,68 @@
         <div class="btn-row" style="margin-top:16px">
           <button id="btn-modal-save" class="btn-save">Save</button>
           <button id="btn-modal-cancel" class="btn-stop">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TiltPi Management Page -->
+    <div id="page-tiltpi" class="page">
+      <div class="panel">
+        <h2>TiltPi Setup</h2>
+        <p class="help-text">Find and configure TiltPi instances on your local network. RAPT2MQTT can upgrade TiltPi's Node-RED flow to add enriched MQTT output, multi-TILT support, and stability fixes.</p>
+        <div class="btn-row">
+          <button id="btn-tiltpi-scan" class="btn-save" onclick="scanTiltPi()">Scan Network</button>
+          <div class="form-group" style="display:inline-flex;align-items:center;gap:8px;margin:0">
+            <label for="tiltpi-manual-host" style="margin:0;white-space:nowrap">Or enter IP:</label>
+            <input type="text" id="tiltpi-manual-host" placeholder="192.168.0.94" style="width:160px">
+            <button class="btn-start" onclick="checkTiltPiManual()">Check</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="tiltpi-scanning" class="panel" style="display:none">
+        <p class="help-text">Scanning network for TiltPi instances (Node-RED on port 1880)...</p>
+        <div class="loading-bar"></div>
+      </div>
+
+      <div id="tiltpi-results" class="panel" style="display:none">
+        <h3>Found TiltPi Instances</h3>
+        <div id="tiltpi-list"></div>
+      </div>
+
+      <div id="tiltpi-none" class="panel" style="display:none">
+        <p class="help-text">No TiltPi instances found on the network. Make sure your TiltPi is powered on, connected to WiFi, and on the same network as this machine.</p>
+        <p class="help-text">You can also enter the IP address manually if you know it.</p>
+      </div>
+
+      <div id="tiltpi-detail" class="panel" style="display:none">
+        <h3 id="tiltpi-detail-title">TiltPi</h3>
+        <div class="tiltpi-info-grid">
+          <div><strong>Address:</strong> <span id="tiltpi-addr"></span></div>
+          <div><strong>Node-RED Version:</strong> <span id="tiltpi-version"></span></div>
+          <div><strong>Nodes:</strong> <span id="tiltpi-nodes"></span></div>
+          <div><strong>Current Flow:</strong> <span id="tiltpi-flow-type"></span></div>
+        </div>
+
+        <div class="tiltpi-actions" style="margin-top:16px">
+          <div class="panel" style="background:var(--bg-panel);border:1px solid var(--border-color)">
+            <h4>Upgrade to RAPT2MQTT Flow</h4>
+            <p class="help-text">Adds enriched MQTT output (temperature, gravity, RSSI, tx_power, colour, calibration status), multi-TILT support (all colours, not just slot 1), and fixes the nuclear disconnect bug.</p>
+            <p class="help-text">Your MQTT broker settings from the MQTT Config page will be used. The TiltPi dashboard and calibration are preserved.</p>
+            <button id="btn-tiltpi-upgrade" class="btn-save" onclick="deployTiltPiFlow('upgraded')">Deploy Upgraded Flow</button>
+          </div>
+
+          <div class="panel" style="background:var(--bg-panel);border:1px solid var(--border-color)">
+            <h4>Revert to Stock Flow</h4>
+            <p class="help-text">Restore the original TiltPi v2 flow from baronbrew/TILTpi. This removes MQTT output entirely -- stock TiltPi only does BLE scan, dashboard display, and Google Sheets cloud logging.</p>
+            <button id="btn-tiltpi-stock" class="btn-stop" onclick="deployTiltPiFlow('stock')">Revert to Stock</button>
+          </div>
+
+          <div class="panel" style="background:var(--bg-panel);border:1px solid var(--border-color)">
+            <h4>Backups</h4>
+            <p class="help-text">Before any deployment, RAPT2MQTT automatically backs up the current TiltPi flow. You can restore any backup here.</p>
+            <div id="tiltpi-backups"></div>
+          </div>
         </div>
       </div>
     </div>

@@ -82,6 +82,7 @@ function showPage(page, id) {
     if (page === "newbrew") { loadNewBrewForm(); applyAffiliateVisibility(); }
     if (page === "integrations") applyAffiliateVisibility();
     if (page === "devices") loadManageDevices();
+    if (page === "tiltpi") loadTiltPiPage();
     if (page === "legendary") loadLegendaryBrews();
   }
 }
@@ -2328,6 +2329,222 @@ async function saveLegendaryEdit() {
     showToast("Brew notes saved", "success");
   } catch (e) { showToast("Failed to save", "error"); }
 }
+
+/* --- TiltPi Management --- */
+let selectedTiltPi = null;
+
+function loadTiltPiPage() {
+  // Reset state when navigating to the page
+  document.getElementById("tiltpi-scanning").style.display = "none";
+  document.getElementById("tiltpi-results").style.display = "none";
+  document.getElementById("tiltpi-none").style.display = "none";
+  // Keep detail visible if we have a selected TiltPi
+  if (!selectedTiltPi) {
+    document.getElementById("tiltpi-detail").style.display = "none";
+  }
+}
+
+async function scanTiltPi() {
+  document.getElementById("tiltpi-scanning").style.display = "";
+  document.getElementById("tiltpi-results").style.display = "none";
+  document.getElementById("tiltpi-none").style.display = "none";
+  document.getElementById("tiltpi-detail").style.display = "none";
+  document.getElementById("btn-tiltpi-scan").disabled = true;
+
+  try {
+    const res = await fetch("/api/tiltpi/scan", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({}),
+    });
+    const instances = await res.json();
+    document.getElementById("tiltpi-scanning").style.display = "none";
+    document.getElementById("btn-tiltpi-scan").disabled = false;
+
+    if (!instances.length) {
+      document.getElementById("tiltpi-none").style.display = "";
+      return;
+    }
+
+    document.getElementById("tiltpi-results").style.display = "";
+    const list = document.getElementById("tiltpi-list");
+    list.innerHTML = instances.map(inst => {
+      const flowBadge = inst.flow_type === "upgraded"
+        ? '<span class="type-badge tilt">RAPT2MQTT Upgraded</span>'
+        : inst.flow_type === "modified"
+          ? '<span class="type-badge" style="background:#854d0e;color:#fbbf24">User Modified (MQTT Scrape)</span>'
+          : '<span class="type-badge rapt">Stock TiltPi</span>';
+      return `
+        <div class="manage-device-card" style="cursor:pointer" onclick="selectTiltPi('${inst.host}', ${inst.port})">
+          <div class="device-photo-placeholder">&#x1F4E1;</div>
+          <div class="device-meta">
+            <span class="name">${inst.host}:${inst.port} <span class="status-dot online" style="display:inline-block"></span></span>
+            <span class="nickname">Node-RED ${inst.nodered_version} &middot; ${inst.node_count} nodes</span>
+            ${flowBadge}
+          </div>
+          <div class="card-actions">
+            <button onclick="event.stopPropagation();selectTiltPi('${inst.host}', ${inst.port})">Configure</button>
+          </div>
+        </div>`;
+    }).join("");
+  } catch (e) {
+    document.getElementById("tiltpi-scanning").style.display = "none";
+    document.getElementById("btn-tiltpi-scan").disabled = false;
+    showToast("Scan failed: " + e.message, "error");
+  }
+}
+
+async function checkTiltPiManual() {
+  const host = document.getElementById("tiltpi-manual-host").value.trim();
+  if (!host) { showToast("Enter an IP address", "error"); return; }
+
+  try {
+    const res = await fetch("/api/tiltpi/check", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({host}),
+    });
+    const info = await res.json();
+    if (!info.reachable) {
+      showToast(`No TiltPi found at ${host}:1880`, "error");
+      return;
+    }
+    selectTiltPi(host, info.port || 1880);
+  } catch (e) {
+    showToast("Check failed: " + e.message, "error");
+  }
+}
+
+async function selectTiltPi(host, port) {
+  try {
+    const res = await fetch("/api/tiltpi/check", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({host, port}),
+    });
+    const info = await res.json();
+    if (!info.reachable) {
+      showToast(`Cannot reach ${host}:${port}`, "error");
+      return;
+    }
+
+    selectedTiltPi = {host, port};
+    document.getElementById("tiltpi-detail").style.display = "";
+    document.getElementById("tiltpi-detail-title").textContent = `TiltPi at ${host}`;
+    document.getElementById("tiltpi-addr").textContent = `${host}:${port}`;
+    document.getElementById("tiltpi-version").textContent = info.nodered_version;
+    document.getElementById("tiltpi-nodes").textContent = info.node_count;
+
+    const typeEl = document.getElementById("tiltpi-flow-type");
+    if (info.flow_type === "upgraded") {
+      typeEl.innerHTML = '<span class="type-badge tilt">RAPT2MQTT Upgraded</span>';
+    } else if (info.flow_type === "modified") {
+      typeEl.innerHTML = '<span class="type-badge" style="background:#854d0e;color:#fbbf24">User Modified (MQTT Scrape)</span>';
+    } else {
+      typeEl.innerHTML = '<span class="type-badge rapt">Stock TiltPi</span>';
+    }
+
+    // Load backups
+    loadTiltPiBackups();
+  } catch (e) {
+    showToast("Failed to load TiltPi info: " + e.message, "error");
+  }
+}
+
+async function deployTiltPiFlow(flowType) {
+  if (!selectedTiltPi) { showToast("No TiltPi selected", "error"); return; }
+
+  const action = flowType === "upgraded" ? "deploy the upgraded RAPT2MQTT flow" : "revert to the stock TiltPi flow";
+  if (!confirm(`This will ${action} to ${selectedTiltPi.host}.\n\nThe current flow will be backed up first. Continue?`)) return;
+
+  const {host, port} = selectedTiltPi;
+
+  try {
+    // Step 1: Backup current flow
+    showToast("Backing up current flow...", "info");
+    const backupRes = await fetch("/api/tiltpi/backup", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({host, port}),
+    });
+    const backup = await backupRes.json();
+    if (backup.error) {
+      showToast("Backup failed: " + backup.error, "error");
+      return;
+    }
+
+    // Step 2: Deploy new flow
+    showToast(`Deploying ${flowType} flow...`, "info");
+    const deployRes = await fetch("/api/tiltpi/deploy", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({host, port, flow_type: flowType}),
+    });
+    const deploy = await deployRes.json();
+    if (deploy.error) {
+      showToast("Deploy failed: " + deploy.error, "error");
+      return;
+    }
+
+    showToast(`${flowType === "upgraded" ? "Upgraded" : "Stock"} flow deployed to ${host} (${deploy.node_count} nodes)`, "success");
+
+    // Refresh the detail view
+    selectTiltPi(host, port);
+  } catch (e) {
+    showToast("Deploy error: " + e.message, "error");
+  }
+}
+
+async function loadTiltPiBackups() {
+  try {
+    const res = await fetch("/api/tiltpi/backups");
+    const backups = await res.json();
+    const container = document.getElementById("tiltpi-backups");
+
+    if (!backups.length) {
+      container.innerHTML = '<p class="help-text">No backups yet. A backup is created automatically before each deployment.</p>';
+      return;
+    }
+
+    container.innerHTML = backups.slice(0, 10).map(b => {
+      const date = new Date(b.created * 1000).toLocaleString();
+      const sizeKB = (b.size / 1024).toFixed(0);
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-color)">
+          <div>
+            <span style="color:var(--text-primary)">${b.filename}</span>
+            <span class="nickname">${date} &middot; ${sizeKB}KB</span>
+          </div>
+          <button class="btn-start" style="font-size:0.8rem;padding:4px 10px" onclick="restoreTiltPiBackup('${b.filename}')">Restore</button>
+        </div>`;
+    }).join("");
+  } catch (e) {}
+}
+
+async function restoreTiltPiBackup(filename) {
+  if (!selectedTiltPi) { showToast("No TiltPi selected", "error"); return; }
+  if (!confirm(`Restore backup "${filename}" to ${selectedTiltPi.host}?\n\nThis will replace the current flow.`)) return;
+
+  const {host, port} = selectedTiltPi;
+  try {
+    showToast("Restoring backup...", "info");
+    const res = await fetch("/api/tiltpi/restore", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({host, port, filename}),
+    });
+    const result = await res.json();
+    if (result.error) {
+      showToast("Restore failed: " + result.error, "error");
+      return;
+    }
+    showToast(`Backup restored to ${host} (${result.node_count} nodes)`, "success");
+    selectTiltPi(host, port);
+  } catch (e) {
+    showToast("Restore error: " + e.message, "error");
+  }
+}
+
 
 /* --- Init --- */
 loadConfig();

@@ -1480,3 +1480,49 @@ code {
   color: #8b949e;
   font-size: 1.1em;
 }
+
+/* --- TiltPi Management --- */
+.tiltpi-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 24px;
+  margin-top: 12px;
+}
+.tiltpi-info-grid div {
+  color: #c9d1d9;
+}
+.tiltpi-info-grid strong {
+  color: #8b949e;
+}
+.tiltpi-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.tiltpi-actions .panel {
+  padding: 16px;
+}
+.tiltpi-actions h4 {
+  margin-bottom: 8px;
+  color: #c9d1d9;
+}
+.loading-bar {
+  height: 3px;
+  background: #21262d;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+.loading-bar::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 30%;
+  background: #58a6ff;
+  border-radius: 2px;
+  animation: loading-slide 1.2s ease-in-out infinite;
+}
+@keyframes loading-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}

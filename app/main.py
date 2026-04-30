@@ -5,6 +5,8 @@ import time
 import logging
 import logging.handlers
 import threading
+import socket
+import requests
 
 from flask import Flask, render_template, request, jsonify, Response, send_from_directory
 from werkzeug.utils import secure_filename
@@ -686,6 +688,260 @@ def get_brew_recipe_photo(session_id):
         if fname.startswith(safe_id + "."):
             return send_from_directory(BREW_PHOTO_DIR, fname)
     return "", 404
+
+
+# --- TiltPi Management ---
+
+TILTPI_FLOW_DIR = os.path.join(os.path.dirname(__file__), "tiltpi_flows")
+TILTPI_BACKUP_DIR = os.path.join(CONFIG_DIR, "tiltpi_backups")
+
+
+def _check_tiltpi(host, port=1880, timeout=2):
+    """Check if a Node-RED instance is running at host:port and return info."""
+    try:
+        r = requests.get(f"http://{host}:{port}/flows", timeout=timeout,
+                         headers={"Accept": "application/json"})
+        if r.status_code == 200:
+            flows = r.json()
+            # Count nodes, look for RAPT2MQTT marker
+            node_count = len(flows) if isinstance(flows, list) else 0
+            has_rapt2mqtt = any(
+                n.get("name", "").startswith("RAPT2MQTT")
+                for n in (flows if isinstance(flows, list) else [])
+            )
+            has_mqtt_scrape = any(
+                "Tasty MQTT" in n.get("name", "")
+                for n in (flows if isinstance(flows, list) else [])
+            )
+            # Try to get Node-RED settings for version
+            version = "unknown"
+            try:
+                sr = requests.get(f"http://{host}:{port}/settings", timeout=timeout)
+                if sr.status_code == 200:
+                    version = sr.json().get("version", "unknown")
+            except Exception:
+                pass
+            return {
+                "host": host,
+                "port": port,
+                "reachable": True,
+                "node_count": node_count,
+                "nodered_version": version,
+                "has_rapt2mqtt_upgrade": has_rapt2mqtt,
+                "has_mqtt_scrape": has_mqtt_scrape,
+                "flow_type": "upgraded" if has_rapt2mqtt else ("modified" if has_mqtt_scrape else "stock"),
+            }
+    except Exception:
+        pass
+    return {"host": host, "port": port, "reachable": False}
+
+
+@app.route("/api/tiltpi/scan", methods=["POST"])
+def scan_tiltpi():
+    """Scan the local network for TiltPi instances running Node-RED on port 1880."""
+    data = request.get_json() or {}
+    # Get the subnet to scan from the request, or auto-detect
+    targets = data.get("targets", [])
+
+    if not targets:
+        # Auto-detect: scan common local subnets based on our own IP
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            my_ip = s.getsockname()[0]
+            s.close()
+            # Scan /24 subnet
+            base = ".".join(my_ip.split(".")[:3])
+            targets = [f"{base}.{i}" for i in range(1, 255)]
+        except Exception:
+            targets = [f"192.168.0.{i}" for i in range(1, 255)]
+
+    # Also try mDNS hostname
+    try:
+        tiltpi_ip = socket.gethostbyname("tiltpi.local")
+        if tiltpi_ip not in targets:
+            targets.insert(0, tiltpi_ip)
+    except Exception:
+        pass
+
+    # Parallel scan using threads
+    results = []
+    lock = threading.Lock()
+
+    def check_host(host):
+        info = _check_tiltpi(host, timeout=1)
+        if info["reachable"]:
+            with lock:
+                results.append(info)
+
+    threads = []
+    for host in targets:
+        t = threading.Thread(target=check_host, args=(host,), daemon=True)
+        threads.append(t)
+        t.start()
+
+    # Wait for all threads (max 10 seconds)
+    for t in threads:
+        t.join(timeout=10)
+
+    return jsonify(results)
+
+
+@app.route("/api/tiltpi/check", methods=["POST"])
+def check_tiltpi():
+    """Check a specific TiltPi instance."""
+    data = request.get_json()
+    if not data or "host" not in data:
+        return jsonify({"error": "Missing 'host' field"}), 400
+    port = data.get("port", 1880)
+    info = _check_tiltpi(data["host"], port=port)
+    return jsonify(info)
+
+
+@app.route("/api/tiltpi/backup", methods=["POST"])
+def backup_tiltpi_flow():
+    """Backup the current flow from a TiltPi instance before deploying changes."""
+    data = request.get_json()
+    if not data or "host" not in data:
+        return jsonify({"error": "Missing 'host' field"}), 400
+    host = data["host"]
+    port = data.get("port", 1880)
+
+    try:
+        r = requests.get(f"http://{host}:{port}/flows", timeout=5,
+                         headers={"Accept": "application/json"})
+        if r.status_code != 200:
+            return jsonify({"error": f"Failed to read flows: HTTP {r.status_code}"}), 502
+
+        os.makedirs(TILTPI_BACKUP_DIR, exist_ok=True)
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        filename = f"tiltpi-backup-{host.replace('.', '_')}-{ts}.json"
+        filepath = os.path.join(TILTPI_BACKUP_DIR, filename)
+        with open(filepath, "w") as f:
+            json.dump(r.json(), f, indent=2)
+
+        logger.info(f"TiltPi flow backed up from {host}:{port} -> {filename}")
+        return jsonify({"status": "ok", "filename": filename, "node_count": len(r.json())})
+    except requests.exceptions.ConnectionError:
+        return jsonify({"error": f"Cannot connect to {host}:{port}"}), 502
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/tiltpi/deploy", methods=["POST"])
+def deploy_tiltpi_flow():
+    """Deploy a flow to a TiltPi instance. Supports 'upgraded' or 'stock' flow types."""
+    data = request.get_json()
+    if not data or "host" not in data:
+        return jsonify({"error": "Missing 'host' field"}), 400
+    if "flow_type" not in data:
+        return jsonify({"error": "Missing 'flow_type' (upgraded or stock)"}), 400
+
+    host = data["host"]
+    port = data.get("port", 1880)
+    flow_type = data["flow_type"]
+    mqtt_host = data.get("mqtt_host", "")
+    mqtt_port = data.get("mqtt_port", "1883")
+
+    # Load the appropriate flow template
+    if flow_type == "upgraded":
+        flow_file = os.path.join(TILTPI_FLOW_DIR, "tiltpi-upgraded-flow.json")
+    elif flow_type == "stock":
+        flow_file = os.path.join(TILTPI_FLOW_DIR, "tiltpi-stock-flow.json")
+    else:
+        return jsonify({"error": f"Unknown flow_type: {flow_type}"}), 400
+
+    if not os.path.exists(flow_file):
+        return jsonify({"error": f"Flow file not found: {flow_type}"}), 500
+
+    try:
+        with open(flow_file) as f:
+            flow_data = f.read()
+
+        # For upgraded flow, substitute MQTT broker placeholders
+        if flow_type == "upgraded":
+            if not mqtt_host:
+                # Use our own MQTT config
+                cfg = load_config()
+                mqtt_host = cfg.get("mqtt_host", "")
+                mqtt_port = str(cfg.get("mqtt_port", 1883))
+            if not mqtt_host:
+                return jsonify({"error": "MQTT host required for upgraded flow. Configure it in MQTT Config or pass mqtt_host."}), 400
+            flow_data = flow_data.replace("%%MQTT_HOST%%", mqtt_host)
+            flow_data = flow_data.replace("%%MQTT_PORT%%", str(mqtt_port))
+
+        flow_json = json.loads(flow_data)
+
+        # Deploy via Node-RED API (full flow replacement)
+        r = requests.post(
+            f"http://{host}:{port}/flows",
+            json=flow_json,
+            headers={"Content-Type": "application/json", "Node-RED-Deployment-Type": "full"},
+            timeout=30,
+        )
+
+        if r.status_code == 204 or r.status_code == 200:
+            logger.info(f"TiltPi flow deployed ({flow_type}) to {host}:{port}")
+            return jsonify({"status": "ok", "flow_type": flow_type, "node_count": len(flow_json)})
+        else:
+            return jsonify({"error": f"Deploy failed: HTTP {r.status_code} - {r.text[:200]}"}), 502
+
+    except requests.exceptions.ConnectionError:
+        return jsonify({"error": f"Cannot connect to {host}:{port}"}), 502
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/tiltpi/backups", methods=["GET"])
+def list_tiltpi_backups():
+    """List all TiltPi flow backups."""
+    if not os.path.isdir(TILTPI_BACKUP_DIR):
+        return jsonify([])
+    backups = []
+    for fname in sorted(os.listdir(TILTPI_BACKUP_DIR), reverse=True):
+        if fname.endswith(".json"):
+            path = os.path.join(TILTPI_BACKUP_DIR, fname)
+            backups.append({
+                "filename": fname,
+                "size": os.path.getsize(path),
+                "created": os.path.getmtime(path),
+            })
+    return jsonify(backups)
+
+
+@app.route("/api/tiltpi/restore", methods=["POST"])
+def restore_tiltpi_flow():
+    """Restore a previously backed-up flow to a TiltPi instance."""
+    data = request.get_json()
+    if not data or "host" not in data or "filename" not in data:
+        return jsonify({"error": "Missing 'host' or 'filename'"}), 400
+
+    host = data["host"]
+    port = data.get("port", 1880)
+    filename = secure_filename(data["filename"])
+    filepath = os.path.join(TILTPI_BACKUP_DIR, filename)
+
+    if not os.path.exists(filepath):
+        return jsonify({"error": "Backup file not found"}), 404
+
+    try:
+        with open(filepath) as f:
+            flow_json = json.load(f)
+
+        r = requests.post(
+            f"http://{host}:{port}/flows",
+            json=flow_json,
+            headers={"Content-Type": "application/json", "Node-RED-Deployment-Type": "full"},
+            timeout=30,
+        )
+
+        if r.status_code in (200, 204):
+            logger.info(f"TiltPi flow restored from {filename} to {host}:{port}")
+            return jsonify({"status": "ok", "filename": filename, "node_count": len(flow_json)})
+        else:
+            return jsonify({"error": f"Restore failed: HTTP {r.status_code}"}), 502
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # --- Logs ---
