@@ -699,11 +699,18 @@ TILTPI_BACKUP_DIR = os.path.join(CONFIG_DIR, "tiltpi_backups")
 def _check_tiltpi(host, port=1880, timeout=2):
     """Check if a Node-RED instance is running at host:port and return info."""
     try:
+        # Quick TCP check first — avoids slow HTTP timeout on unreachable hosts
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        if result != 0:
+            return {"host": host, "port": port, "reachable": False}
+
         r = requests.get(f"http://{host}:{port}/flows", timeout=timeout,
                          headers={"Accept": "application/json"})
         if r.status_code == 200:
             flows = r.json()
-            # Count nodes, look for RAPT2MQTT marker
             node_count = len(flows) if isinstance(flows, list) else 0
             has_rapt2mqtt = any(
                 n.get("name", "").startswith("RAPT2MQTT")
@@ -713,7 +720,6 @@ def _check_tiltpi(host, port=1880, timeout=2):
                 "Tasty MQTT" in n.get("name", "")
                 for n in (flows if isinstance(flows, list) else [])
             )
-            # Try to get Node-RED settings for version
             version = "unknown"
             try:
                 sr = requests.get(f"http://{host}:{port}/settings", timeout=timeout)
@@ -764,12 +770,12 @@ def scan_tiltpi():
     except Exception:
         pass
 
-    # Parallel scan using threads
+    # Parallel scan using threads with a hard deadline
     results = []
     lock = threading.Lock()
 
     def check_host(host):
-        info = _check_tiltpi(host, timeout=1)
+        info = _check_tiltpi(host, timeout=0.8)
         if info["reachable"]:
             with lock:
                 results.append(info)
@@ -780,9 +786,13 @@ def scan_tiltpi():
         threads.append(t)
         t.start()
 
-    # Wait for all threads (max 10 seconds)
+    # Wait with a total deadline of 12 seconds (not per-thread)
+    deadline = time.time() + 12
     for t in threads:
-        t.join(timeout=10)
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            break
+        t.join(timeout=remaining)
 
     return jsonify(results)
 
