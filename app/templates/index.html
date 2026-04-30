@@ -1254,7 +1254,7 @@
             <p class="help-text">Yes, the API calls temperature controllers "Hydrometers" — a holdover from the RAPT Pill (their hydrometer product). The same endpoints serve both device types.</p>
 
             <h3 style="margin-top:20px">POST Encoding Gotcha</h3>
-            <p>The RAPT API expects <strong>form-encoded</strong> POST bodies (<code>Content-Type: application/x-www-form-urlencoded</code>), not JSON. Sending <code>json=</code> instead of <code>data=</code> in Python requests will silently fail — the API returns 200 but does nothing. This has tripped up every third-party integration at least once.</p>
+            <p>The RAPT API expects <strong>form-encoded</strong> POST bodies (<code>Content-Type: application/x-www-form-urlencoded</code>), not JSON. If you're building your own integration, watch out: sending <code>json=</code> instead of <code>data=</code> in Python requests will silently fail — the API returns 200 but does nothing. No error, no clue. RAPT2MQTT handles this correctly, but it's a common trap in the RAPT API.</p>
 
             <h3 style="margin-top:20px">PID Controller</h3>
             <p>The RAPT controller runs a PID loop internally. The three tunable parameters:</p>
