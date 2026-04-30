@@ -994,6 +994,67 @@
         <p class="help-text" style="margin-top:12px">Links may contain affiliate codes. Purchases help support RAPT2MQTT development.</p>
       </div>
 
+      <div class="panel nerd-panel">
+        <details class="accordion">
+          <summary>Nerd Stuff</summary>
+          <div class="accordion-body">
+            <h3>iBeacon UUID Colour Key</h3>
+            <p>Each Tilt colour has a unique iBeacon UUID. The only byte that changes is position 4 (highlighted):</p>
+            <div class="nerd-table-wrap">
+              <table class="nerd-table">
+                <thead><tr><th>Colour</th><th>UUID</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="colour-dot" style="background:#e6194b"></span> Red</td><td><code>a495bb<strong>10</strong>-c5b1-4b44-b512-1370f02d74de</code></td></tr>
+                  <tr><td><span class="colour-dot" style="background:#3cb44b"></span> Green</td><td><code>a495bb<strong>20</strong>-c5b1-4b44-b512-1370f02d74de</code></td></tr>
+                  <tr><td><span class="colour-dot" style="background:#000; border:2px solid #444"></span> Black</td><td><code>a495bb<strong>30</strong>-c5b1-4b44-b512-1370f02d74de</code></td></tr>
+                  <tr><td><span class="colour-dot" style="background:#9b59b6"></span> Purple</td><td><code>a495bb<strong>40</strong>-c5b1-4b44-b512-1370f02d74de</code></td></tr>
+                  <tr><td><span class="colour-dot" style="background:#f39c12"></span> Orange</td><td><code>a495bb<strong>50</strong>-c5b1-4b44-b512-1370f02d74de</code></td></tr>
+                  <tr><td><span class="colour-dot" style="background:#2980b9"></span> Blue</td><td><code>a495bb<strong>60</strong>-c5b1-4b44-b512-1370f02d74de</code></td></tr>
+                  <tr><td><span class="colour-dot" style="background:#f1c40f"></span> Yellow</td><td><code>a495bb<strong>70</strong>-c5b1-4b44-b512-1370f02d74de</code></td></tr>
+                  <tr><td><span class="colour-dot" style="background:#e91e8f"></span> Pink</td><td><code>a495bb<strong>80</strong>-c5b1-4b44-b512-1370f02d74de</code></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="help-text">Pattern: <code>a495bb{10-80}c5b14b44b5121370f02d74de</code> — increments of 0x10 per colour.</p>
+
+            <h3 style="margin-top:20px">BLE Broadcast Format</h3>
+            <p>The Tilt broadcasts as an iBeacon. The two data fields piggyback on the iBeacon spec:</p>
+            <ul class="nerd-list">
+              <li><strong>Major value</strong> = Temperature in Fahrenheit (raw integer, e.g. 68)</li>
+              <li><strong>Minor value</strong> = Specific gravity × 1000 (e.g. 1045 = SG 1.045)</li>
+              <li><strong>TX Power</strong> = Used for RSSI distance estimation (standard iBeacon field)</li>
+            </ul>
+            <p class="help-text">The Tilt doesn't use Celsius or decimal SG natively — all conversion happens on the receiving end.</p>
+
+            <h3 style="margin-top:20px">How Gravity is Measured</h3>
+            <p>The Tilt is a sealed tube with a weighted bottom. As the beer's density (sugar content) decreases during fermentation, the tube tilts further from vertical. An accelerometer inside measures the tilt angle, which maps to specific gravity via a calibration curve. More sugar = more buoyant = more upright.</p>
+
+            <h3 style="margin-top:20px">BLE Range &amp; Practical Limits</h3>
+            <ul class="nerd-list">
+              <li>Bluetooth Low Energy theoretical range: ~100m open air</li>
+              <li>Through a stainless steel fermenter: 1-3 metres</li>
+              <li>Through a glass carboy or plastic bucket: 5-10 metres</li>
+              <li>The Pi Zero WH should sit within a few metres of the fermenter for reliable reception</li>
+              <li>Broadcast interval: ~1 second (the Tilt is always transmitting while the battery is in)</li>
+            </ul>
+
+            <h3 style="margin-top:20px">Battery</h3>
+            <p>CR123A lithium cell. Lasts approximately 12 months of continuous broadcasting. The Tilt has no off switch — remove the battery when not in use to conserve it. Replacement batteries are a couple of dollars.</p>
+
+            <h3 style="margin-top:20px">TiltPi Data Pipeline</h3>
+            <p>The stock TiltPi runs Node-RED v0.18.4 on Raspbian. The flow works like this:</p>
+            <ol class="nerd-list">
+              <li>A Python script (<code>tiltScanner.py</code>) runs as a service, scanning for iBeacon advertisements</li>
+              <li>Detected Tilt data is written to a JSON file in <code>/var/www/html/</code></li>
+              <li>Node-RED reads the JSON file on a 5-second inject timer</li>
+              <li>A series of "check" function nodes compare current vs. previous readings for each colour slot</li>
+              <li>Changed readings update the Node-RED dashboard and optionally log to Google Sheets or cloud services</li>
+            </ol>
+            <p class="help-text">The RAPT2MQTT upgraded flow adds an MQTT output node that publishes per-colour JSON to your broker, making the data available to any MQTT subscriber.</p>
+          </div>
+        </details>
+      </div>
+
       <div class="panel">
         <h2>Next Step: Set Up TiltPi</h2>
         <p>Got your Tilt and Pi? Head to <a href="#" onclick="showPage('tiltpi'); return false;">TiltPi Setup</a> to flash the image, connect to MQTT, and start seeing live data in RAPT2MQTT.</p>
@@ -1162,6 +1223,82 @@
           </a>
         </div>
         <p class="help-text" style="margin-top:12px">Links may contain affiliate codes. Purchases help support RAPT2MQTT development.</p>
+      </div>
+
+      <div class="panel nerd-panel">
+        <details class="accordion">
+          <summary>Nerd Stuff</summary>
+          <div class="accordion-body">
+            <h3>RAPT Cloud API</h3>
+            <p>The RAPT API lives at <code>api.rapt.io</code>. Authentication is OAuth2 client credentials:</p>
+            <ul class="nerd-list">
+              <li><strong>Token endpoint:</strong> <code>https://id.rapt.io/connect/token</code></li>
+              <li><strong>Grant type:</strong> <code>password</code> (your RAPT email + API secret)</li>
+              <li><strong>Token lifetime:</strong> 3600 seconds (1 hour). RAPT2MQTT refreshes at ~56 minutes.</li>
+              <li><strong>API base:</strong> <code>https://api.rapt.io/api/</code></li>
+            </ul>
+            <p class="help-text">The API secret is not your account password. It's generated separately under My Account > API Secrets in the RAPT Portal.</p>
+
+            <h3 style="margin-top:20px">Endpoints Used by RAPT2MQTT</h3>
+            <div class="nerd-table-wrap">
+              <table class="nerd-table">
+                <thead><tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr></thead>
+                <tbody>
+                  <tr><td><code>GET</code></td><td><code>/Hydrometers/GetHydrometers</code></td><td>List all registered controllers</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/Hydrometers/GetHydrometer/{id}</code></td><td>Detailed state for one controller</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/Hydrometers/SetTargetTemperature/{id}</code></td><td>Change the target setpoint</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/Hydrometers/SetPID/{id}</code></td><td>Update PID tuning parameters</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="help-text">Yes, the API calls temperature controllers "Hydrometers" — a holdover from the RAPT Pill (their hydrometer product). The same endpoints serve both device types.</p>
+
+            <h3 style="margin-top:20px">POST Encoding Gotcha</h3>
+            <p>The RAPT API expects <strong>form-encoded</strong> POST bodies (<code>Content-Type: application/x-www-form-urlencoded</code>), not JSON. Sending <code>json=</code> instead of <code>data=</code> in Python requests will silently fail — the API returns 200 but does nothing. This has tripped up every third-party integration at least once.</p>
+
+            <h3 style="margin-top:20px">PID Controller</h3>
+            <p>The RAPT controller runs a PID loop internally. The three tunable parameters:</p>
+            <ul class="nerd-list">
+              <li><strong>P (Proportional):</strong> How aggressively it responds to the current error. Higher = faster but more overshoot.</li>
+              <li><strong>I (Integral):</strong> Corrects for sustained offsets over time. Eliminates steady-state error.</li>
+              <li><strong>D (Derivative):</strong> Dampens oscillation by responding to the rate of change.</li>
+            </ul>
+            <p>Default PID values work well for most setups. Only tune if you're seeing persistent oscillation or slow convergence.</p>
+
+            <h3 style="margin-top:20px">Smart Feedback (RAPT2MQTT Feature)</h3>
+            <p>When you pair a Tilt (in the beer) with a RAPT controller (on the fridge), RAPT2MQTT can run a <strong>cascaded P-only control loop</strong>:</p>
+            <ol class="nerd-list">
+              <li>You set a <strong>beer target</strong> temperature (what you want the beer at)</li>
+              <li>The Tilt reads the actual beer temperature every few minutes</li>
+              <li>RAPT2MQTT calculates the error: <code>target - actual</code></li>
+              <li>It adjusts the <strong>fridge target</strong> on the controller to compensate</li>
+              <li>The controller's internal PID handles the fridge air temp — RAPT2MQTT only nudges the setpoint</li>
+            </ol>
+            <p>Why P-only (no I or D)? The sample rate is 5 minutes and the hardware has its own delays. Adding integral or derivative terms at this timescale causes oscillation, not improvement. The P-only approach was validated through testing and is deliberate.</p>
+
+            <h3 style="margin-top:20px">Polling &amp; Rate Limits</h3>
+            <ul class="nerd-list">
+              <li>Default poll interval: 300 seconds (5 minutes)</li>
+              <li>RAPT API rate limit: not officially documented, but polling faster than every 60 seconds risks throttling</li>
+              <li>The controller itself only reports to the cloud every ~60 seconds, so polling faster than that gains nothing</li>
+              <li>RAPT2MQTT stores all readings locally in SQLite — you never lose data even if the cloud goes down temporarily</li>
+            </ul>
+
+            <h3 style="margin-top:20px">MQTT Topic Structure</h3>
+            <div class="nerd-table-wrap">
+              <table class="nerd-table">
+                <thead><tr><th>Topic</th><th>Direction</th><th>Payload</th></tr></thead>
+                <tbody>
+                  <tr><td><code>RAPT/temperatureController</code></td><td>Publish</td><td>JSON controller state (temp, target, mode, RSSI, etc.)</td></tr>
+                  <tr><td><code>RAPT/temperatureController/Command</code></td><td>Subscribe</td><td>JSON command (e.g. set target temp)</td></tr>
+                  <tr><td><code>TiltPi</code></td><td>Subscribe</td><td>JSON from TiltPi (all colours, flat topic)</td></tr>
+                  <tr><td><code>TiltPi/{colour}</code></td><td>Subscribe</td><td>Per-colour JSON from upgraded TiltPi flow</td></tr>
+                  <tr><td><code>RAPT2MQTT/notify</code></td><td>Publish</td><td>Human-readable notifications (brew events, alerts)</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div class="panel">

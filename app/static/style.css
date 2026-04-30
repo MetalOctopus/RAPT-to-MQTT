@@ -1838,6 +1838,19 @@ code {
 .tilt-buy-btn.primary { background: #58a6ff; color: #0d1117; border-color: #58a6ff; }
 .tilt-buy-btn.primary:hover { background: #79c0ff; }
 
+/* Nerd stuff sections */
+.nerd-panel summary { color: #58a6ff; }
+.nerd-table-wrap { overflow-x: auto; margin: 12px 0; }
+.nerd-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.nerd-table th, .nerd-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #21262d; }
+.nerd-table th { color: #8b949e; font-weight: 600; }
+.nerd-table td { color: #c9d1d9; }
+.nerd-table code { background: #161b22; padding: 2px 6px; border-radius: 3px; font-size: 0.85rem; }
+.nerd-table strong { color: #f0883e; }
+.nerd-list { padding-left: 20px; margin: 8px 0; }
+.nerd-list li { padding: 4px 0; color: #c9d1d9; }
+.nerd-list code { background: #161b22; padding: 2px 6px; border-radius: 3px; font-size: 0.85rem; }
+
 /* RAPT about page */
 .rapt-feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
 .rapt-feature-card {
