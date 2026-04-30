@@ -782,8 +782,126 @@
     <div id="page-tiltpi" class="page">
       <div class="panel">
         <h2>TiltPi Setup</h2>
-        <p class="help-text">Find and configure TiltPi instances on your local network. RAPT2MQTT can upgrade TiltPi's Node-RED flow to add enriched MQTT output, multi-TILT support, and stability fixes.</p>
-        <div class="btn-row">
+        <p>Your TILT hydrometer floats inside the fermenter, silently broadcasting temperature and gravity over Bluetooth. But Bluetooth has a range of about 10 metres and no concept of WiFi, MQTT, or your network. Something needs to sit near the fermenter, hear those broadcasts, and relay the data to the rest of your system.</p>
+        <p>That something is a <strong>TiltPi</strong> -- a Raspberry Pi Zero WH running Node-RED, acting as a Bluetooth-to-WiFi bridge. It's the only piece of hardware between your TILT and RAPT2MQTT.</p>
+        <p style="margin-top:12px">This page lets you find your TiltPi on the network, inspect what software it's running, and upgrade it with one click to unlock everything RAPT2MQTT needs.</p>
+      </div>
+
+      <!-- How Does a TiltPi Work? -->
+      <details class="accordion">
+        <summary>How does a TiltPi work?</summary>
+        <div class="accordion-body">
+          <h4>The Hardware</h4>
+          <p>A TiltPi is just a <strong>Raspberry Pi Zero WH</strong> (~$17) with a pre-flashed SD card. The Pi Zero WH has built-in Bluetooth LE and WiFi -- that's all you need. It sits near your fermenter (within ~10m Bluetooth range), plugged into USB power.</p>
+          <p>There's no custom circuit board, no proprietary hardware. It's a standard Pi running standard software. You could build one yourself with a blank Pi Zero WH and the TiltPi SD card image from tilthydrometer.com.</p>
+
+          <h4 style="margin-top:16px">The Software: Node-RED</h4>
+          <p>Inside, TiltPi runs <strong>Node-RED</strong> -- a visual flow-based programming tool. The stock TiltPi flow does this:</p>
+          <div class="tiltpi-flow-diagram">
+            <div class="flow-step">TILT broadcasts iBeacon via Bluetooth LE every ~5 seconds</div>
+            <div class="flow-arrow">&#x2193;</div>
+            <div class="flow-step">Pi Zero WH picks up the BLE signal using <code>aioblescan</code> (Python)</div>
+            <div class="flow-arrow">&#x2193;</div>
+            <div class="flow-step">Node-RED decodes the iBeacon: UUID identifies the colour, major = temperature, minor = gravity</div>
+            <div class="flow-arrow">&#x2193;</div>
+            <div class="flow-step">Calibration applied (if you've set calibration points in the TiltPi dashboard)</div>
+            <div class="flow-arrow">&#x2193;</div>
+            <div class="flow-step split">
+              <span>Dashboard display (http://tiltpi.local:1880/ui)</span>
+              <span>Google Sheets cloud logging (optional)</span>
+            </div>
+          </div>
+          <p style="margin-top:12px">That's it. Stock TiltPi has <strong>no MQTT output</strong>. The data stays on the Pi's dashboard and optionally goes to Google Sheets. Your local network, Home Assistant, and RAPT2MQTT can't see it.</p>
+
+          <h4 style="margin-top:16px">How Colour Detection Works</h4>
+          <p>Each TILT colour has a unique Bluetooth UUID baked into the hardware. When the Pi scans for BLE devices, it matches the UUID to a colour table:</p>
+          <div class="tiltpi-colour-table">
+            <div class="colour-row"><span class="colour-dot" style="background:#e74c3c"></span> RED</div>
+            <div class="colour-row"><span class="colour-dot" style="background:#2ecc71"></span> GREEN</div>
+            <div class="colour-row"><span class="colour-dot" style="background:#1a1a2e"></span> BLACK</div>
+            <div class="colour-row"><span class="colour-dot" style="background:#9b59b6"></span> PURPLE</div>
+            <div class="colour-row"><span class="colour-dot" style="background:#e67e22"></span> ORANGE</div>
+            <div class="colour-row"><span class="colour-dot" style="background:#3498db"></span> BLUE</div>
+            <div class="colour-row"><span class="colour-dot" style="background:#f1c40f"></span> YELLOW</div>
+            <div class="colour-row"><span class="colour-dot" style="background:#ff69b4"></span> PINK</div>
+          </div>
+          <p style="margin-top:8px">The Pi doesn't need to be told which colour to look for. It discovers whatever TILTs are broadcasting nearby -- up to 8 colours simultaneously.</p>
+
+          <h4 style="margin-top:16px">What About TiltPico?</h4>
+          <p>Tilt sells a <strong>TiltPico</strong> ($45) -- a Raspberry Pi Pico W with fixed firmware that does BLE-to-WiFi bridging. It's simpler but <strong>HTTP only, no MQTT</strong>, no Node-RED, no extensibility. A Pi Zero WH ($17) does everything TiltPico does and more, for less than half the price. RAPT2MQTT works with TiltPi, not TiltPico.</p>
+        </div>
+      </details>
+
+      <!-- What Does the Upgrade Do? -->
+      <details class="accordion" open>
+        <summary>What does the RAPT2MQTT upgrade do?</summary>
+        <div class="accordion-body">
+          <p><strong>We don't touch your TILT.</strong> The TILT hydrometer is a sealed device floating in your beer. It has no software to update, no settings to change. It just broadcasts.</p>
+          <p>What we upgrade is the <strong>Node-RED flow on your TiltPi</strong> -- the software that decides what to do with the data after the Pi receives it. Think of it like upgrading the app on your phone, not the sensor itself.</p>
+
+          <h4 style="margin-top:16px">What stays the same</h4>
+          <ul class="tiltpi-list">
+            <li>BLE scanning pipeline -- the same <code>aioblescan</code> process listens for your TILT</li>
+            <li>TiltPi dashboard -- still accessible at <code>http://tiltpi.local:1880/ui</code></li>
+            <li>Calibration points -- your SG and temperature calibrations are preserved</li>
+            <li>Google Sheets cloud logging -- still works if you had it configured</li>
+            <li>All 8 display slots -- the dashboard still shows all detected TILTs</li>
+          </ul>
+
+          <h4 style="margin-top:16px">What gets added</h4>
+          <ul class="tiltpi-list">
+            <li><strong>MQTT output</strong> -- your TILT data gets published to your MQTT broker, where RAPT2MQTT (and Home Assistant) can read it</li>
+            <li><strong>All colours, not just one</strong> -- stock TiltPi's MQTT scrape (if you added one manually) only sees the first detected TILT. The upgrade publishes every colour on its own topic (<code>TiltPi/BLUE</code>, <code>TiltPi/RED</code>, etc.)</li>
+            <li><strong>Enriched data</strong> -- instead of just temperature and gravity, the MQTT message includes:</li>
+          </ul>
+
+          <div class="tiltpi-data-table" style="margin:12px 0 12px 16px">
+            <table>
+              <thead><tr><th>Field</th><th>What it is</th><th>Stock MQTT</th><th>Upgraded</th></tr></thead>
+              <tbody>
+                <tr><td>Temperature</td><td>In-liquid beer temperature (Celsius)</td><td class="tiltpi-check">&#10003;</td><td class="tiltpi-check">&#10003;</td></tr>
+                <tr><td>Gravity</td><td>Specific gravity as decimal (1.045)</td><td class="tiltpi-partial">SG x 1000</td><td class="tiltpi-check">&#10003;</td></tr>
+                <tr><td>Colour</td><td>Which TILT (BLUE, RED, etc.)</td><td class="tiltpi-miss">&#10007;</td><td class="tiltpi-check">&#10003;</td></tr>
+                <tr><td>RSSI</td><td>Bluetooth signal strength (dBm)</td><td class="tiltpi-miss">&#10007;</td><td class="tiltpi-check">&#10003;</td></tr>
+                <tr><td>tx_power</td><td>Transmit power / battery indicator</td><td class="tiltpi-miss">&#10007;</td><td class="tiltpi-check">&#10003;</td></tr>
+                <tr><td>Calibrated</td><td>Whether calibration points are applied</td><td class="tiltpi-miss">&#10007;</td><td class="tiltpi-check">&#10003;</td></tr>
+                <tr><td>Beer Name</td><td>Name set in TiltPi dashboard</td><td class="tiltpi-miss">&#10007;</td><td class="tiltpi-check">&#10003;</td></tr>
+                <tr><td>Pro Model</td><td>Whether it's a TILT Pro (higher precision)</td><td class="tiltpi-miss">&#10007;</td><td class="tiltpi-check">&#10003;</td></tr>
+                <tr><td>MAC Address</td><td>Hardware ID for same-colour TILTs</td><td class="tiltpi-miss">&#10007;</td><td class="tiltpi-check">&#10003;</td></tr>
+                <tr><td>Timestamp</td><td>When the reading was taken</td><td class="tiltpi-miss">&#10007;</td><td class="tiltpi-check">&#10003;</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h4 style="margin-top:16px">What gets fixed</h4>
+          <ul class="tiltpi-list">
+            <li><strong>Nuclear disconnect bug</strong> -- in the stock flow, when one TILT goes out of Bluetooth range, the software clears the data for <em>all</em> TILTs and forces a full re-detection cycle. The upgrade fixes this so only the disconnected TILT is affected. If you have two TILTs running two brews, one going out of range won't cause the other to flicker.</li>
+          </ul>
+
+          <h4 style="margin-top:16px">The data flow after upgrade</h4>
+          <div class="tiltpi-flow-diagram">
+            <div class="flow-step">TILT broadcasts via Bluetooth LE</div>
+            <div class="flow-arrow">&#x2193;</div>
+            <div class="flow-step">TiltPi receives, decodes, calibrates (same as before)</div>
+            <div class="flow-arrow split-arrow">
+              <span>&#x2199;</span>
+              <span>&#x2198;</span>
+            </div>
+            <div class="flow-step split">
+              <span>Dashboard + Google Sheets (unchanged)</span>
+              <span style="color:#58a6ff"><strong>MQTT broker</strong> (new)</span>
+            </div>
+            <div class="flow-arrow" style="margin-left:50%">&#x2193;</div>
+            <div class="flow-step" style="border-color:#58a6ff;margin-left:25%">RAPT2MQTT picks up the MQTT message, records history, shows charts, enables smart feedback</div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Find Your TiltPi -->
+      <div class="panel">
+        <h3>Find Your TiltPi</h3>
+        <p class="help-text">RAPT2MQTT will scan your local network for any device running Node-RED on port 1880. If your TiltPi isn't found automatically, enter its IP address directly.</p>
+        <div class="btn-row" style="margin-top:12px">
           <button id="btn-tiltpi-scan" class="btn-save" onclick="scanTiltPi()">Scan Network</button>
           <div class="form-group" style="display:inline-flex;align-items:center;gap:8px;margin:0">
             <label for="tiltpi-manual-host" style="margin:0;white-space:nowrap">Or enter IP:</label>
@@ -791,6 +909,7 @@
             <button class="btn-start" onclick="checkTiltPiManual()">Check</button>
           </div>
         </div>
+        <p class="help-text" style="margin-top:8px;font-size:0.85em">Tip: check your router's DHCP client list for a device called "tiltpi" if you don't know the IP.</p>
       </div>
 
       <div id="tiltpi-scanning" class="panel" style="display:none">
@@ -805,7 +924,7 @@
 
       <div id="tiltpi-none" class="panel" style="display:none">
         <p class="help-text">No TiltPi instances found on the network. Make sure your TiltPi is powered on, connected to WiFi, and on the same network as this machine.</p>
-        <p class="help-text">You can also enter the IP address manually if you know it.</p>
+        <p class="help-text">You can also enter the IP address manually if you know it. Check your router's DHCP client list for a device called "tiltpi".</p>
       </div>
 
       <div id="tiltpi-detail" class="panel" style="display:none">
@@ -820,20 +939,20 @@
         <div class="tiltpi-actions" style="margin-top:16px">
           <div class="panel" style="background:var(--bg-panel);border:1px solid var(--border-color)">
             <h4>Upgrade to RAPT2MQTT Flow</h4>
-            <p class="help-text">Adds enriched MQTT output (temperature, gravity, RSSI, tx_power, colour, calibration status), multi-TILT support (all colours, not just slot 1), and fixes the nuclear disconnect bug.</p>
-            <p class="help-text">Your MQTT broker settings from the MQTT Config page will be used. The TiltPi dashboard and calibration are preserved.</p>
+            <p class="help-text">Deploys the upgraded Node-RED flow to your TiltPi. Your existing calibration, dashboard, and cloud logging are untouched. The only change is adding MQTT output with enriched data for all TILT colours, and fixing the nuclear disconnect bug.</p>
+            <p class="help-text">Your MQTT broker settings from the MQTT Config page will be used automatically. After deployment, TILT data will start flowing into RAPT2MQTT within seconds.</p>
             <button id="btn-tiltpi-upgrade" class="btn-save" onclick="deployTiltPiFlow('upgraded')">Deploy Upgraded Flow</button>
           </div>
 
           <div class="panel" style="background:var(--bg-panel);border:1px solid var(--border-color)">
             <h4>Revert to Stock Flow</h4>
-            <p class="help-text">Restore the original TiltPi v2 flow from baronbrew/TILTpi. This removes MQTT output entirely -- stock TiltPi only does BLE scan, dashboard display, and Google Sheets cloud logging.</p>
+            <p class="help-text">Restore the original TiltPi v2 flow exactly as it ships from tilthydrometer.com. This removes all MQTT output -- the TiltPi will go back to dashboard display and Google Sheets only. Use this if something goes wrong or you want a clean slate.</p>
             <button id="btn-tiltpi-stock" class="btn-stop" onclick="deployTiltPiFlow('stock')">Revert to Stock</button>
           </div>
 
           <div class="panel" style="background:var(--bg-panel);border:1px solid var(--border-color)">
             <h4>Backups</h4>
-            <p class="help-text">Before any deployment, RAPT2MQTT automatically backs up the current TiltPi flow. You can restore any backup here.</p>
+            <p class="help-text">Before any deployment, RAPT2MQTT automatically backs up the current TiltPi flow. You can restore any previous backup here -- including your own custom modifications.</p>
             <div id="tiltpi-backups"></div>
           </div>
         </div>
