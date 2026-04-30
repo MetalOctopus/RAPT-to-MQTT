@@ -83,6 +83,8 @@ function showPage(page, id) {
     if (page === "integrations") applyAffiliateVisibility();
     if (page === "devices") loadManageDevices();
     if (page === "tiltpi") loadTiltPiPage();
+    if (page === "tilt-about") {} // static page, no loading needed
+    if (page === "rapt-about") {} // static page, no loading needed
     if (page === "legendary") loadLegendaryBrews();
   }
 }
@@ -334,6 +336,24 @@ function renderDevice(dev) {
   const isStale = dev._stale === true;
 
   document.getElementById("device-name").textContent = dev._nickname || dev.name || "Unknown Device";
+  document.getElementById("device-type-label").textContent = isTilt ? "Tilt Hydrometer" : "RAPT Temperature Controller";
+
+  // Device hero photo
+  const photoWrapper = document.getElementById("device-photo-wrapper");
+  const photoPlaceholder = document.getElementById("device-photo-placeholder");
+  const photoIcon = document.getElementById("device-photo-icon");
+  photoIcon.innerHTML = isTilt ? '&#x1F4A7;' : '&#x1F321;';
+  const existingImg = photoWrapper.querySelector(".brew-hero-photo");
+  if (existingImg) existingImg.remove();
+  const testImg = new Image();
+  testImg.onload = () => {
+    photoPlaceholder.style.display = "none";
+    testImg.className = "brew-hero-photo";
+    photoWrapper.insertBefore(testImg, photoPlaceholder);
+  };
+  testImg.onerror = () => { photoPlaceholder.style.display = ""; };
+  testImg.src = "/api/devices/" + dev.id + "/photo?t=" + Date.now();
+
   const connBadge = document.getElementById("device-connection");
   if (isStale) {
     connBadge.textContent = "Offline";
@@ -352,7 +372,7 @@ function renderDevice(dev) {
       staleBanner = document.createElement("div");
       staleBanner.id = "device-stale-banner";
       staleBanner.className = "stale-banner";
-      const header = document.querySelector("#page-device .device-header");
+      const header = document.querySelector("#page-device .brew-hero");
       header.parentNode.insertBefore(staleBanner, header.nextSibling);
     }
     const lastSeen = dev._last_seen ? new Date(dev._last_seen).toLocaleString() + " (" + timeAgo(dev._last_seen) + ")" : "unknown";
@@ -1998,6 +2018,18 @@ document.getElementById("brew-photo-upload").addEventListener("change", async (e
     await fetch(`/api/brews/${currentBrewId}/brew-photo`, { method: "POST", body: formData });
     showToast("Beer photo uploaded", "success");
     loadBrewDetail(currentBrewId);
+  } catch (e) { showToast("Upload failed", "error"); }
+});
+
+/* Device hero photo upload */
+document.getElementById("device-photo-upload").addEventListener("change", async (e) => {
+  if (!currentDeviceId || !e.target.files.length) return;
+  const formData = new FormData();
+  formData.append("photo", e.target.files[0]);
+  try {
+    await fetch(`/api/devices/${currentDeviceId}/photo`, { method: "POST", body: formData });
+    showToast("Device photo uploaded", "success");
+    loadDevice(currentDeviceId);
   } catch (e) { showToast("Upload failed", "error"); }
 });
 

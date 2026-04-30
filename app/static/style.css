@@ -1784,3 +1784,66 @@ code {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(400%); }
 }
+
+/* --- What is Tilt / RAPT about page --- */
+.tilt-hero-section { text-align: center; margin: 12px 0; }
+.tilt-colour-lineup { display: flex; gap: 10px; justify-content: center; margin-bottom: 8px; }
+
+/* How it works steps */
+.tilt-how-it-works { display: flex; flex-direction: column; gap: 16px; }
+.tilt-step { display: flex; gap: 16px; align-items: flex-start; }
+.tilt-step-number {
+  flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
+  background: #58a6ff; color: #0d1117; font-weight: 700; font-size: 1.1rem;
+  display: flex; align-items: center; justify-content: center;
+}
+.tilt-step-content p { color: #8b949e; margin-top: 4px; }
+
+/* Requirements cards */
+.tilt-requirements { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.tilt-req-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 20px; text-align: center;
+}
+.tilt-req-icon { font-size: 2rem; margin-bottom: 8px; }
+.tilt-req-card p { color: #8b949e; margin-top: 8px; font-size: 0.9rem; }
+.tilt-price { display: inline-block; margin-top: 12px; color: #58a6ff; font-weight: 600; }
+
+/* Comparison table */
+.tilt-comparison-table { overflow-x: auto; }
+.tilt-comparison-table table { width: 100%; border-collapse: collapse; }
+.tilt-comparison-table th, .tilt-comparison-table td {
+  padding: 10px 14px; text-align: left; border-bottom: 1px solid #30363d;
+}
+.tilt-comparison-table th { color: #8b949e; font-weight: 600; }
+.tilt-comparison-table td:first-child { color: #c9d1d9; font-weight: 500; }
+.tilt-comparison-table td:nth-child(2) { color: #8b949e; }
+.tilt-comparison-table td:nth-child(3) { color: #58a6ff; }
+
+/* Reviews */
+.tilt-reviews-list { list-style: none; padding: 0; }
+.tilt-reviews-list li { padding: 8px 0; border-bottom: 1px solid #21262d; color: #8b949e; }
+.tilt-reviews-list li:last-child { border-bottom: none; }
+
+/* Buy links */
+.tilt-buy-panel { text-align: center; }
+.tilt-buy-links { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+.tilt-buy-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 24px; border-radius: 8px; font-weight: 600;
+  background: #21262d; color: #c9d1d9; text-decoration: none;
+  border: 1px solid #30363d; transition: all 0.15s;
+}
+.tilt-buy-btn:hover { background: #30363d; border-color: #58a6ff; }
+.tilt-buy-btn.primary { background: #58a6ff; color: #0d1117; border-color: #58a6ff; }
+.tilt-buy-btn.primary:hover { background: #79c0ff; }
+
+/* RAPT about page */
+.rapt-feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.rapt-feature-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 20px; text-align: center;
+}
+.rapt-feature-icon { font-size: 2rem; margin-bottom: 8px; }
+.rapt-feature-card p { color: #8b949e; margin-top: 8px; font-size: 0.9rem; }
+.rapt-buy-links { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }

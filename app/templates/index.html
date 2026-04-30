@@ -39,10 +39,20 @@
     <div class="nav-section">
       <div class="nav-label">Devices</div>
       <a class="nav-item" data-page="devices" href="#">Device Management</a>
-      <a class="nav-item" data-page="tiltpi" href="#">TiltPi Setup</a>
       <div id="device-list" class="device-list">
         <div class="nav-item dim">No devices discovered</div>
       </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Tilt</div>
+      <a class="nav-item" data-page="tilt-about" href="#">What is Tilt?</a>
+      <a class="nav-item" data-page="tiltpi" href="#">TiltPi Setup</a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">RAPT</div>
+      <a class="nav-item" data-page="rapt-about" href="#">What is RAPT?</a>
     </div>
 
     <div class="nav-section">
@@ -586,9 +596,23 @@
 
     <!-- Device Detail Page -->
     <div id="page-device" class="page">
-      <div class="device-header">
-        <h2 id="device-name">--</h2>
-        <span id="device-connection" class="badge">--</span>
+      <div class="panel">
+        <div class="brew-hero">
+          <div class="brew-photo-wrapper" id="device-photo-wrapper">
+            <div class="brew-photo-placeholder" id="device-photo-placeholder">
+              <span class="brew-photo-icon" id="device-photo-icon">&#x1F321;</span>
+            </div>
+            <label class="brew-photo-upload-overlay" for="device-photo-upload" title="Upload device photo">
+              &#x1F4F7;
+            </label>
+            <input type="file" id="device-photo-upload" accept="image/*" capture="environment" style="display:none">
+          </div>
+          <div class="brew-hero-info">
+            <h2 id="device-name">--</h2>
+            <span id="device-type-label" class="help-text"></span>
+            <span id="device-connection" class="badge">--</span>
+          </div>
+        </div>
       </div>
 
       <div class="sub-tabs">
@@ -806,6 +830,343 @@
           <button id="btn-modal-save" class="btn-save">Save</button>
           <button id="btn-modal-cancel" class="btn-stop">Cancel</button>
         </div>
+      </div>
+    </div>
+
+    <!-- What is Tilt? Page -->
+    <div id="page-tilt-about" class="page">
+      <div class="panel">
+        <h2>What is a Tilt Hydrometer?</h2>
+        <p class="help-text" style="margin-bottom:24px">The Tilt is a wireless floating hydrometer that sits inside your fermenter and continuously measures specific gravity and temperature. No samples, no mess, no opening the fermenter.</p>
+
+        <div class="tilt-hero-section">
+          <div class="tilt-colour-lineup">
+            <span class="colour-dot" style="background:#e6194b" title="Red"></span>
+            <span class="colour-dot" style="background:#3cb44b" title="Green"></span>
+            <span class="colour-dot" style="background:#000000; border:2px solid #444" title="Black"></span>
+            <span class="colour-dot" style="background:#9b59b6" title="Purple"></span>
+            <span class="colour-dot" style="background:#f39c12" title="Orange"></span>
+            <span class="colour-dot" style="background:#2980b9" title="Blue"></span>
+            <span class="colour-dot" style="background:#f1c40f" title="Yellow"></span>
+            <span class="colour-dot" style="background:#e91e8f" title="Pink"></span>
+          </div>
+          <p class="help-text">Available in 8 colours — run up to 8 fermenters simultaneously, each tracked independently.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>How It Works</h2>
+        <div class="tilt-how-it-works">
+          <div class="tilt-step">
+            <div class="tilt-step-number">1</div>
+            <div class="tilt-step-content">
+              <strong>Drop it in</strong>
+              <p>Sanitise the Tilt and drop it into your fermenter before sealing. It floats upright in the beer.</p>
+            </div>
+          </div>
+          <div class="tilt-step">
+            <div class="tilt-step-number">2</div>
+            <div class="tilt-step-content">
+              <strong>Bluetooth broadcast</strong>
+              <p>The Tilt uses a tilt angle sensor and thermometer to measure gravity and temperature. It broadcasts readings via Bluetooth Low Energy (BLE) every few seconds.</p>
+            </div>
+          </div>
+          <div class="tilt-step">
+            <div class="tilt-step-number">3</div>
+            <div class="tilt-step-content">
+              <strong>TiltPi receives</strong>
+              <p>A Raspberry Pi Zero WH running TiltPi software sits near the fermenter, picks up the BLE signal, and forwards readings to your network via MQTT.</p>
+            </div>
+          </div>
+          <div class="tilt-step">
+            <div class="tilt-step-number">4</div>
+            <div class="tilt-step-content">
+              <strong>RAPT2MQTT displays</strong>
+              <p>RAPT2MQTT receives the MQTT data and gives you live charts, brew session tracking, and smart temperature feedback when paired with a RAPT controller.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>What You Need</h2>
+        <div class="tilt-requirements">
+          <div class="tilt-req-card">
+            <div class="tilt-req-icon">&#x1F4A7;</div>
+            <strong>Tilt Hydrometer</strong>
+            <p>The floating sensor itself. Battery lasts ~1 year of continuous use. Waterproof, food-safe plastic tube.</p>
+            <span class="tilt-price">~$135 USD</span>
+          </div>
+          <div class="tilt-req-card">
+            <div class="tilt-req-icon">&#x1F4E1;</div>
+            <strong>Raspberry Pi Zero WH</strong>
+            <p>The BLE receiver. Has built-in Bluetooth and WiFi. Sits near the fermenter, forwards data to your network. Cheap and low power.</p>
+            <span class="tilt-price">~$17 USD</span>
+          </div>
+          <div class="tilt-req-card">
+            <div class="tilt-req-icon">&#x1F4BE;</div>
+            <strong>MicroSD Card</strong>
+            <p>8GB or larger. Flash the free TiltPi image and boot. That's the whole install.</p>
+            <span class="tilt-price">~$8 USD</span>
+          </div>
+        </div>
+        <p class="help-text" style="margin-top:16px">Total cost to get started: <strong>~$160 USD</strong> for the Tilt + Pi setup. You probably already have an SD card.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Why Not Just Use a Manual Hydrometer?</h2>
+        <div class="tilt-comparison-table">
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th>Manual Hydrometer</th>
+                <th>Tilt Hydrometer</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Reading frequency</td>
+                <td>When you remember</td>
+                <td>Every few seconds, 24/7</td>
+              </tr>
+              <tr>
+                <td>Open the fermenter?</td>
+                <td>Yes, every time</td>
+                <td>Never (after dropping it in)</td>
+              </tr>
+              <tr>
+                <td>Infection risk</td>
+                <td>Every sample</td>
+                <td>Zero</td>
+              </tr>
+              <tr>
+                <td>Know when fermentation is done</td>
+                <td>Guess and check</td>
+                <td>Watch the curve flatten in real time</td>
+              </tr>
+              <tr>
+                <td>Temperature logging</td>
+                <td>Nope</td>
+                <td>Continuous, in the beer itself</td>
+              </tr>
+              <tr>
+                <td>Middle-of-the-night readings</td>
+                <td>Set an alarm</td>
+                <td>Already logged</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>What About TiltPico?</h2>
+        <p>Baron Brew also sells the <strong>TiltPico</strong> ($45 USD) — a WiFi-only bridge. It works, but it only speaks HTTP (no MQTT), only supports one Tilt at a time, and requires their cloud service for remote access.</p>
+        <p>A <strong>Raspberry Pi Zero WH ($17 USD)</strong> running TiltPi does everything the Pico does plus MQTT publishing, multi-Tilt support, and full local control — for less than half the price. We recommend the Pi.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Reviews &amp; Reputation</h2>
+        <p>The Tilt has been the go-to wireless hydrometer in the homebrewing community since 2015. It's used by thousands of homebrewers and small commercial breweries worldwide.</p>
+        <ul class="tilt-reviews-list">
+          <li><strong>Homebrew Academy:</strong> "The Tilt changed how I brew. I can't go back to manual readings."</li>
+          <li><strong>Brulosophy:</strong> "One of the most useful brewing gadgets available."</li>
+          <li><strong>Reddit r/homebrewing:</strong> Consistently recommended as the best gravity monitoring solution.</li>
+        </ul>
+        <p class="help-text" style="margin-top:12px">The Tilt is manufactured by Baron Brew Equipment LLC in the USA.</p>
+      </div>
+
+      <div class="panel tilt-buy-panel">
+        <h2>Where to Buy</h2>
+        <p>Available directly from the manufacturer and authorised retailers:</p>
+        <div class="tilt-buy-links">
+          <a href="https://tilthydrometer.com" target="_blank" rel="noopener" class="tilt-buy-btn primary">
+            TiltHydrometer.com <span class="help-text">(manufacturer)</span>
+          </a>
+          <a href="https://www.morebeer.com/search?search=tilt+hydrometer" target="_blank" rel="noopener" class="tilt-buy-btn">
+            MoreBeer
+          </a>
+          <a href="https://www.amazon.com/s?k=tilt+hydrometer" target="_blank" rel="noopener" class="tilt-buy-btn">
+            Amazon
+          </a>
+        </div>
+        <p class="help-text" style="margin-top:12px">Links may contain affiliate codes. Purchases help support RAPT2MQTT development.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Next Step: Set Up TiltPi</h2>
+        <p>Got your Tilt and Pi? Head to <a href="#" onclick="showPage('tiltpi'); return false;">TiltPi Setup</a> to flash the image, connect to MQTT, and start seeing live data in RAPT2MQTT.</p>
+      </div>
+    </div>
+
+    <!-- What is RAPT? Page -->
+    <div id="page-rapt-about" class="page">
+      <div class="panel">
+        <h2>What is RAPT?</h2>
+        <p class="help-text" style="margin-bottom:24px">RAPT (Real Ale Precision Technology) is a line of connected brewing equipment by Kegland, an Australian brewing supply company. The RAPT ecosystem gives you cloud-connected fermentation control with real-time monitoring from anywhere.</p>
+      </div>
+
+      <div class="panel">
+        <h2>The RAPT Temperature Controller</h2>
+        <p>The flagship product for fermentation. A WiFi-enabled temperature controller that manages heating and cooling in your fermentation fridge or chamber.</p>
+        <div class="rapt-feature-grid" style="margin-top:16px">
+          <div class="rapt-feature-card">
+            <div class="rapt-feature-icon">&#x1F321;</div>
+            <strong>Precision Control</strong>
+            <p>PID-based temperature regulation. Set your target and the controller handles heating and cooling relays automatically.</p>
+          </div>
+          <div class="rapt-feature-card">
+            <div class="rapt-feature-icon">&#x1F4F6;</div>
+            <strong>WiFi Connected</strong>
+            <p>Connects to your home WiFi and reports to the RAPT cloud. Monitor and adjust from anywhere via the RAPT Portal or API.</p>
+          </div>
+          <div class="rapt-feature-card">
+            <div class="rapt-feature-icon">&#x2744;&#xFE0F;</div>
+            <strong>Heat &amp; Cool</strong>
+            <p>Two relay outputs — one for heating (heat belt, heat pad) and one for cooling (fridge compressor). Switchover delay protects your compressor.</p>
+          </div>
+          <div class="rapt-feature-card">
+            <div class="rapt-feature-icon">&#x1F4CA;</div>
+            <strong>Cloud API</strong>
+            <p>Full REST API at api.rapt.io. RAPT2MQTT polls this to bring your data into MQTT and Home Assistant without any extra hardware.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>How It Connects</h2>
+        <div class="tilt-how-it-works">
+          <div class="tilt-step">
+            <div class="tilt-step-number">1</div>
+            <div class="tilt-step-content">
+              <strong>Controller joins WiFi</strong>
+              <p>Plug in the RAPT controller, connect to your home WiFi via the setup process. It registers with the RAPT cloud automatically.</p>
+            </div>
+          </div>
+          <div class="tilt-step">
+            <div class="tilt-step-number">2</div>
+            <div class="tilt-step-content">
+              <strong>Cloud stores data</strong>
+              <p>The controller reports temperature, mode, and status to api.rapt.io. All data is accessible via their REST API with your API secret.</p>
+            </div>
+          </div>
+          <div class="tilt-step">
+            <div class="tilt-step-number">3</div>
+            <div class="tilt-step-content">
+              <strong>RAPT2MQTT polls the API</strong>
+              <p>Every 5 minutes (configurable), RAPT2MQTT fetches your device data from the cloud and publishes it to your local MQTT broker.</p>
+            </div>
+          </div>
+          <div class="tilt-step">
+            <div class="tilt-step-number">4</div>
+            <div class="tilt-step-content">
+              <strong>Home Assistant picks it up</strong>
+              <p>Your MQTT broker feeds the data into Home Assistant, giving you native sensors, dashboards, and automations for your fermentation setup.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>What You Need</h2>
+        <div class="tilt-requirements">
+          <div class="tilt-req-card">
+            <div class="tilt-req-icon">&#x1F3DB;</div>
+            <strong>RAPT Temperature Controller</strong>
+            <p>The controller unit itself. Includes a temperature probe, two relay outputs, and WiFi. Powers from a standard outlet.</p>
+            <span class="tilt-price">~$69 AUD</span>
+          </div>
+          <div class="tilt-req-card">
+            <div class="tilt-req-icon">&#x1F4BB;</div>
+            <strong>RAPT Account + API Secret</strong>
+            <p>Free account at rapt.io. Create an API secret under My Account > API Secrets. This is how RAPT2MQTT authenticates.</p>
+            <span class="tilt-price">Free</span>
+          </div>
+          <div class="tilt-req-card">
+            <div class="tilt-req-icon">&#x1F4E6;</div>
+            <strong>Docker Host</strong>
+            <p>Any machine running Docker — Unraid, Synology NAS, Raspberry Pi 3/4, old laptop, VM. Runs RAPT2MQTT and your MQTT broker.</p>
+            <span class="tilt-price">You probably have this</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>The Wider RAPT Ecosystem</h2>
+        <p>Kegland makes more than just the temperature controller. The RAPT platform includes:</p>
+        <ul class="tilt-reviews-list" style="margin-top:12px">
+          <li><strong>RAPT Pill:</strong> A wireless hydrometer (Kegland's competitor to the Tilt). Floats in your fermenter, reports gravity and temperature via the RAPT cloud.</li>
+          <li><strong>RAPT Portal:</strong> The web dashboard at rapt.io where you can monitor devices, view charts, set up brew profiles, and manage your API credentials.</li>
+          <li><strong>KegLand App:</strong> Mobile app for iOS and Android. Real-time device monitoring on the go.</li>
+        </ul>
+        <p class="help-text" style="margin-top:12px">RAPT2MQTT currently supports the Temperature Controller. RAPT Pill support may come in the future.</p>
+      </div>
+
+      <div class="panel">
+        <h2>RAPT vs Other Controllers</h2>
+        <div class="tilt-comparison-table">
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th>Inkbird ITC-308</th>
+                <th>RAPT Controller</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>WiFi / Remote control</td>
+                <td>No (basic model) / Yes (WiFi model)</td>
+                <td>Yes, built-in</td>
+              </tr>
+              <tr>
+                <td>Cloud API</td>
+                <td>No</td>
+                <td>Yes, full REST API</td>
+              </tr>
+              <tr>
+                <td>PID control</td>
+                <td>Simple on/off with hysteresis</td>
+                <td>Full PID with tunable parameters</td>
+              </tr>
+              <tr>
+                <td>Home Assistant integration</td>
+                <td>Manual / IR hacks</td>
+                <td>Via RAPT2MQTT (MQTT)</td>
+              </tr>
+              <tr>
+                <td>Smart feedback (beer temp)</td>
+                <td>Not possible</td>
+                <td>With Tilt via RAPT2MQTT</td>
+              </tr>
+              <tr>
+                <td>Logging</td>
+                <td>None</td>
+                <td>Cloud + RAPT2MQTT local history</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel tilt-buy-panel">
+        <h2>Where to Buy</h2>
+        <p>Available from Kegland directly and authorised retailers:</p>
+        <div class="rapt-buy-links">
+          <a href="https://www.kegland.com.au" target="_blank" rel="noopener" class="tilt-buy-btn primary">
+            KegLand.com.au <span class="help-text">(manufacturer)</span>
+          </a>
+          <a href="https://www.amazon.com/s?k=kegland+rapt" target="_blank" rel="noopener" class="tilt-buy-btn">
+            Amazon
+          </a>
+        </div>
+        <p class="help-text" style="margin-top:12px">Links may contain affiliate codes. Purchases help support RAPT2MQTT development.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Next Step: Configure RAPT2MQTT</h2>
+        <p>Got your controller and API secret? Head to <a href="#" onclick="showPage('config'); return false;">MQTT Config</a> to enter your credentials and start bridging data.</p>
       </div>
     </div>
 
