@@ -2429,6 +2429,9 @@ async function selectTiltPi(host, port) {
     }
 
     selectedTiltPi = {host, port};
+    // Hide scan result panels when selecting a TiltPi
+    document.getElementById("tiltpi-none").style.display = "none";
+    document.getElementById("tiltpi-scanning").style.display = "none";
     document.getElementById("tiltpi-detail").style.display = "";
     document.getElementById("tiltpi-detail-title").textContent = `TiltPi at ${host}`;
     document.getElementById("tiltpi-addr").textContent = `${host}:${port}`;
