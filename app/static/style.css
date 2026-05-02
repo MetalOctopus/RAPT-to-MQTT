@@ -1117,7 +1117,87 @@ code {
 
 .brew-log-desc {
   color: #c9d1d9;
+  flex: 1;
 }
+.brew-log-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.brew-log-entry:hover .brew-log-actions { opacity: 1; }
+.brew-log-edit-btn, .brew-log-del-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.brew-log-edit-btn { color: #58a6ff; }
+.brew-log-edit-btn:hover { background: rgba(88,166,255,0.15); }
+.brew-log-del-btn { color: #f85149; }
+.brew-log-del-btn:hover { background: rgba(248,81,73,0.15); }
+
+/* --- Brew actions bar (cold crash, etc.) --- */
+.brew-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 4px;
+}
+.btn-cold-crash {
+  background: linear-gradient(135deg, #1a6fb5, #58a6ff);
+  color: #fff;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+  transition: opacity 0.15s;
+}
+.btn-cold-crash:hover:not(:disabled) { opacity: 0.85; }
+.btn-cold-crash:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* --- Manual Reading --- */
+.manual-reading-panel {
+  background: rgba(88,166,255,0.06);
+  border: 1px dashed rgba(88,166,255,0.3);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 8px 0 12px;
+}
+
+/* --- Temperature Profile --- */
+.profile-timeline {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 12px;
+  min-height: 40px;
+}
+.profile-steps-table { display: flex; flex-direction: column; gap: 2px; }
+.profile-step-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.03);
+}
+.profile-step-row.active {
+  background: rgba(46,160,67,0.12);
+  border-left: 3px solid #2ea043;
+}
+.profile-step-day { color: #8b949e; min-width: 65px; font-size: 13px; }
+.profile-step-temp { color: #2ea043; font-weight: 600; min-width: 55px; font-size: 14px; }
+.profile-step-label { color: #c9d1d9; flex: 1; font-size: 13px; }
 
 /* --- Reminders --- */
 .reminder-form {

@@ -325,20 +325,20 @@
         </div>
       </div>
 
-      <div class="device-grid">
-        <div class="device-card primary">
+      <div class="device-grid" id="brew-tiles">
+        <div class="device-card primary brew-needs-tilt">
           <div class="card-label">Beer Temp</div>
           <div class="card-value" id="brew-beer-temp">--</div>
         </div>
-        <div class="device-card primary">
+        <div class="device-card primary brew-needs-ctrl">
           <div class="card-label">Fridge Temp</div>
           <div class="card-value" id="brew-fridge-temp">--</div>
         </div>
-        <div class="device-card primary">
+        <div class="device-card primary brew-needs-tilt">
           <div class="card-label">Specific Gravity</div>
           <div class="card-value" id="brew-sg">--</div>
         </div>
-        <div class="device-card">
+        <div class="device-card brew-needs-tilt">
           <div class="card-label">ABV</div>
           <div class="card-value" id="brew-abv">--</div>
         </div>
@@ -347,10 +347,31 @@
           <div class="card-value" id="brew-og-display">--</div>
           <div id="brew-og-hint" class="card-hint" style="display:none"></div>
         </div>
-        <div class="device-card">
+        <div class="device-card brew-needs-ctrl">
           <div class="card-label">Fridge Target</div>
           <div class="card-value" id="brew-fridge-target">--</div>
         </div>
+      </div>
+
+      <!-- Manual reading (shown when no auto device) -->
+      <div id="manual-reading-panel" class="manual-reading-panel" style="display:none">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+          <div class="form-group" style="flex:0 0 110px" id="manual-sg-group">
+            <label for="manual-sg">SG Reading</label>
+            <input type="number" id="manual-sg" step="0.001" min="0.990" max="1.200" placeholder="1.045">
+          </div>
+          <div class="form-group" style="flex:0 0 110px" id="manual-temp-group">
+            <label for="manual-temp">Temp (°C)</label>
+            <input type="number" id="manual-temp" step="0.1" placeholder="20.0">
+          </div>
+          <button class="btn-save" onclick="submitManualReading()" style="white-space:nowrap">Log Reading</button>
+        </div>
+        <p class="help-text" style="margin-top:6px">No connected hydrometer or thermometer? Enter your readings manually from a traditional hydrometer, refractometer, or thermometer.</p>
+      </div>
+
+      <div class="brew-actions-bar" id="brew-actions-bar">
+        <button id="btn-cold-crash" class="btn-cold-crash brew-needs-ctrl" onclick="coldCrash()" disabled>Cold Crash</button>
+        <span class="help-text brew-no-ctrl-hint" style="display:none">Assign a temperature controller to enable cold crash</span>
       </div>
 
       <!-- Gauge Dashboard -->
@@ -409,8 +430,37 @@
         </div>
       </div>
 
-      <!-- Smart Temp Feedback -->
-      <div class="panel">
+      <!-- Temperature Profile -->
+      <div class="panel brew-needs-ctrl" id="profile-panel">
+        <h2>Temperature Profile</h2>
+        <p class="help-text" style="margin-bottom:12px">Design a multi-step fermentation schedule. The system automatically advances through each step and sets the controller target. Works with or without smart feedback.</p>
+        <div id="profile-timeline" class="profile-timeline"></div>
+        <div id="profile-steps-list"></div>
+        <div class="profile-add-step" style="margin-top:12px">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+            <div class="form-group" style="flex:0 0 80px">
+              <label for="profile-step-day">Start Day</label>
+              <input type="number" id="profile-step-day" min="0" step="0.5" placeholder="0" style="width:100%">
+            </div>
+            <div class="form-group" style="flex:0 0 80px">
+              <label for="profile-step-temp">Temp (°C)</label>
+              <input type="number" id="profile-step-temp" min="0" max="35" step="0.5" placeholder="18" style="width:100%">
+            </div>
+            <div class="form-group" style="flex:1;min-width:120px">
+              <label for="profile-step-label">Label</label>
+              <input type="text" id="profile-step-label" placeholder="e.g. Primary, Diacetyl rest, Cold crash" style="width:100%">
+            </div>
+            <button class="btn-save" onclick="addProfileStep()" style="white-space:nowrap">Add Step</button>
+          </div>
+        </div>
+        <div class="btn-row" style="margin-top:12px;gap:8px">
+          <button class="btn-save" onclick="saveProfile()">Save Profile</button>
+          <button class="btn-stop" onclick="clearProfile()">Clear Profile</button>
+        </div>
+      </div>
+
+      <!-- Smart Temp Feedback (needs both Tilt + Controller) -->
+      <div class="panel" id="feedback-panel">
         <h2>Smart Temperature Feedback</h2>
         <p id="feedback-explanation" class="help-text" style="margin:4px 0 12px 0;line-height:1.6"></p>
         <div class="controls" style="margin-bottom:12px">

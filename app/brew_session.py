@@ -82,12 +82,56 @@ class BrewSession:
                      "tilt_device_id", "controller_device_id",
                      "temp_feedback_gain", "temp_feedback_interval",
                      "temp_feedback_min", "temp_feedback_max", "temp_feedback_deadband",
-                     "temp_source"]:
+                     "temp_source", "temp_profile"]:
             if key in updates:
                 session[key] = updates[key]
 
+        # If profile is being set/updated, advance to the current step immediately
+        if "temp_profile" in updates:
+            self._advance_profile(session)
+
         self._history.save_session(session["id"], json.dumps(session))
         return session
+
+    def _advance_profile(self, session):
+        """Check the temperature profile and update target_beer_temp if the step has changed."""
+        profile = session.get("temp_profile")
+        if not profile or not profile.get("steps"):
+            return
+
+        started = session.get("started_at")
+        if not started:
+            return
+
+        brew_start = datetime.fromisoformat(started).timestamp()
+        now = time.time()
+        elapsed_days = (now - brew_start) / 86400
+
+        steps = sorted(profile["steps"], key=lambda s: s["day"])
+        current_step = None
+        for step in steps:
+            if elapsed_days >= step["day"]:
+                current_step = step
+            else:
+                break
+
+        if not current_step:
+            return
+
+        old_step_idx = profile.get("current_step_index")
+        new_step_idx = steps.index(current_step)
+
+        if old_step_idx != new_step_idx:
+            profile["current_step_index"] = new_step_idx
+            session["target_beer_temp"] = current_step["temp"]
+            label = current_step.get("label", f"Step {new_step_idx + 1}")
+            self._logger.info(
+                f"Profile step: {label} — target now {current_step['temp']}°C (day {current_step['day']}+)"
+            )
+            self._history.add_event(
+                session["id"], "profile_step",
+                f"{label}: {current_step['temp']}°C"
+            )
 
     def add_event(self, session_id, event_type, description=""):
         session = self._active_sessions.get(session_id)
@@ -242,6 +286,10 @@ class BrewSession:
                 session = self._active_sessions.get(session_id)
                 if not session or session["status"] != "active":
                     break
+
+                # Advance temperature profile if active
+                self._advance_profile(session)
+                self._history.save_session(session_id, json.dumps(session))
 
                 target_beer = session.get("target_beer_temp")
                 tilt_id = session.get("tilt_device_id")
@@ -398,10 +446,21 @@ class BrewSession:
         self._reminder_thread.start()
 
     def _reminder_loop(self):
-        """Check reminders every 60s and fire MQTT notifications."""
+        """Check reminders and profile steps every 60s."""
         while not self._reminder_stop.is_set():
             try:
                 for sid, session in list(self._active_sessions.items()):
+                    # Advance temperature profile (works even without feedback loop)
+                    if session.get("temp_profile") and not session.get("temp_feedback_enabled"):
+                        old_target = session.get("target_beer_temp")
+                        self._advance_profile(session)
+                        if session.get("target_beer_temp") != old_target:
+                            self._history.save_session(sid, json.dumps(session))
+                            # If there's a controller, set the target directly
+                            ctrl_id = session.get("controller_device_id")
+                            if ctrl_id and session.get("target_beer_temp") is not None:
+                                self._bridge.set_target_temperature(session["target_beer_temp"], ctrl_id)
+
                     reminders = self._history.get_reminders(sid)
                     for r in reminders:
                         if r["fired"]:

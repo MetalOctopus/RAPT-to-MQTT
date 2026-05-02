@@ -181,10 +181,28 @@ class HistoryStore:
     def get_events(self, session_id):
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT timestamp, event_type, description, data FROM brew_events WHERE session_id = ? ORDER BY timestamp",
+                "SELECT id, timestamp, event_type, description, data FROM brew_events WHERE session_id = ? ORDER BY timestamp",
                 (session_id,)
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def update_event(self, event_id, timestamp=None, description=None):
+        with self._lock:
+            with self._connect() as conn:
+                if timestamp is not None and description is not None:
+                    conn.execute("UPDATE brew_events SET timestamp = ?, description = ? WHERE id = ?",
+                                 (timestamp, description, event_id))
+                elif timestamp is not None:
+                    conn.execute("UPDATE brew_events SET timestamp = ? WHERE id = ?",
+                                 (timestamp, event_id))
+                elif description is not None:
+                    conn.execute("UPDATE brew_events SET description = ? WHERE id = ?",
+                                 (description, event_id))
+
+    def delete_event(self, event_id):
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM brew_events WHERE id = ?", (event_id,))
 
     # --- Temp feedback log ---
 

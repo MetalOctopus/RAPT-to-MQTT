@@ -436,6 +436,59 @@ def brew_session_event(session_id):
         return jsonify({"error": str(e)}), 400
 
 
+@app.route("/api/brews/<session_id>/event/<int:event_id>", methods=["PUT"])
+def update_brew_event(session_id, event_id):
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Missing data"}), 400
+    history.update_event(event_id, timestamp=data.get("timestamp"), description=data.get("description"))
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/brews/<session_id>/event/<int:event_id>", methods=["DELETE"])
+def delete_brew_event(session_id, event_id):
+    history.delete_event(event_id)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/brews/<session_id>/manual_reading", methods=["POST"])
+def manual_brew_reading(session_id):
+    """Record a manual hydrometer/thermometer reading for a brew."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Missing data"}), 400
+
+    device_id = f"manual-{session_id}"
+    metrics = {}
+    desc_parts = []
+    if "sg" in data and data["sg"] is not None:
+        metrics["specificGravity"] = float(data["sg"])
+        desc_parts.append(f"SG: {float(data['sg']):.3f}")
+    if "temperature" in data and data["temperature"] is not None:
+        metrics["temperature"] = float(data["temperature"])
+        desc_parts.append(f"Temp: {float(data['temperature']):.1f}°C")
+
+    if not metrics:
+        return jsonify({"error": "Provide at least sg or temperature"}), 400
+
+    history.record(device_id, metrics)
+
+    # Also update brew session with latest values
+    session = brew.active_sessions.get(session_id)
+    if session:
+        if "specificGravity" in metrics:
+            session["current_sg"] = metrics["specificGravity"]
+            if session.get("og"):
+                session["current_abv"] = round((session["og"] - metrics["specificGravity"]) * 131.25, 2)
+        if "temperature" in metrics:
+            session["beer_temp"] = metrics["temperature"]
+        history.save_session(session_id, json.dumps(session))
+
+    # Log as brew event
+    brew.add_event(session_id, "sample", f"Manual reading: {', '.join(desc_parts)}")
+    return jsonify({"status": "ok"})
+
+
 @app.route("/api/brews/<session_id>/feedback/start", methods=["POST"])
 def start_brew_feedback(session_id):
     try:

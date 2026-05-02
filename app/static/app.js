@@ -1028,6 +1028,46 @@ function renderBrewDetail(b) {
     statusBadge.className = "badge offline";
   }
 
+  // --- Graceful degradation: show/hide based on available gear ---
+  const hasTilt = !!b.tilt_device_id;
+  const hasCtrl = !!b.controller_device_id;
+
+  document.querySelectorAll(".brew-needs-tilt").forEach(el => {
+    el.style.display = hasTilt ? "" : "none";
+  });
+  document.querySelectorAll(".brew-needs-ctrl").forEach(el => {
+    el.style.display = hasCtrl ? "" : "none";
+  });
+
+  // Cold crash button: enable only if controller assigned and brew active
+  const coldCrashBtn = document.getElementById("btn-cold-crash");
+  if (coldCrashBtn) {
+    coldCrashBtn.disabled = !hasCtrl || b.status !== "active";
+  }
+  const noCtrlHint = document.querySelector(".brew-no-ctrl-hint");
+  if (noCtrlHint) noCtrlHint.style.display = (!hasCtrl && b.status === "active") ? "" : "none";
+
+  // Gauges: show/hide based on gear
+  const gaugeBeer = document.querySelector("#gauge-beer-temp")?.closest(".gauge-panel");
+  const gaugeSG = document.querySelector("#gauge-sg")?.closest(".gauge-panel");
+  const gaugeFridge = document.querySelector("#gauge-fridge")?.closest(".gauge-panel");
+  if (gaugeBeer) gaugeBeer.style.display = hasTilt ? "" : "none";
+  if (gaugeSG) gaugeSG.style.display = hasTilt ? "" : "none";
+  if (gaugeFridge) gaugeFridge.style.display = hasCtrl ? "" : "none";
+
+  // Smart feedback needs both Tilt + Controller
+  const fbPanel = document.getElementById("feedback-panel");
+  if (fbPanel) fbPanel.style.display = (hasTilt && hasCtrl) ? "" : "none";
+
+  // Manual reading panel: show when missing Tilt (no auto SG/temp)
+  const manualPanel = document.getElementById("manual-reading-panel");
+  if (manualPanel) {
+    manualPanel.style.display = (!hasTilt && b.status === "active") ? "" : "none";
+    // Show temp field if no controller either
+    const manualTempGroup = document.getElementById("manual-temp-group");
+    if (manualTempGroup) manualTempGroup.style.display = hasCtrl ? "none" : "";
+  }
+
   const days = daysSince(b.started_at);
   document.getElementById("brew-detail-duration").textContent = `Day ${Math.floor(days)} (${formatSeconds(days * 86400)})`;
 
@@ -1070,6 +1110,9 @@ function renderBrewDetail(b) {
 
   // Needle gauge
   updateNeedleGauge(b);
+
+  // Temperature profile
+  renderProfileDesigner(b);
 
   // Feedback explanation and live status
   renderFeedbackStatus(b);
@@ -1518,10 +1561,12 @@ function renderBrewLog(events, startedAt) {
     el.innerHTML = '<div class="brew-log-entry dim">No events yet.</div>';
     return;
   }
+  const systemEvents = new Set(["brew_started", "brew_completed", "brew_cancelled"]);
   el.innerHTML = events.map(ev => {
     const dt = new Date(ev.timestamp * 1000);
     const day = Math.floor((ev.timestamp * 1000 - new Date(startedAt).getTime()) / 86400000);
-    const timeStr = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const hh = String(dt.getHours()).padStart(2, "0");
+    const mm = String(dt.getMinutes()).padStart(2, "0");
     const dateStr = dt.toLocaleDateString([], { month: "short", day: "numeric" });
     const typeLabels = {
       brew_started: "Started",
@@ -1531,15 +1576,79 @@ function renderBrewLog(events, startedAt) {
       sample: "Sample",
       note: "Note",
       reminder_fired: "Reminder",
+      cold_crash: "Cold Crash",
+      profile_step: "Profile Step",
     };
     const label = typeLabels[ev.event_type] || ev.event_type;
+    const editable = !systemEvents.has(ev.event_type) && ev.id;
+    const editBtns = editable
+      ? `<span class="brew-log-actions">
+           <button class="brew-log-edit-btn" onclick="editBrewEvent(${ev.id}, ${ev.timestamp}, '${esc(ev.description || '').replace(/'/g, "\\'")}')">edit</button>
+           <button class="brew-log-del-btn" onclick="deleteBrewEvent(${ev.id})">x</button>
+         </span>`
+      : '';
     return `<div class="brew-log-entry">
       <span class="brew-log-day">Day ${day}</span>
-      <span class="brew-log-time">${dateStr} ${timeStr}</span>
+      <span class="brew-log-time">${dateStr} ${hh}:${mm}</span>
       <span class="brew-log-type">${esc(label)}</span>
       <span class="brew-log-desc">${esc(ev.description || '')}</span>
+      ${editBtns}
     </div>`;
   }).join("");
+}
+
+async function editBrewEvent(eventId, currentTs, currentDesc) {
+  const dt = new Date(currentTs * 1000);
+  const pad = (n) => String(n).padStart(2, "0");
+  const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+
+  const html = `<div style="display:flex;flex-direction:column;gap:8px">
+    <label>When did this actually happen?</label>
+    <input type="datetime-local" id="edit-event-time" value="${dtStr}" style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);padding:6px 8px;border-radius:4px">
+    <label>Description</label>
+    <input type="text" id="edit-event-desc" value="${currentDesc}" style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);padding:6px 8px;border-radius:4px">
+  </div>`;
+
+  // Use a simple modal approach — inject into DOM
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `<div class="modal-box" style="max-width:400px">
+    <h3 style="margin-bottom:12px">Edit Event</h3>
+    ${html}
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn-save" id="edit-event-save">Save</button>
+      <button class="btn-stop" id="edit-event-cancel">Cancel</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  return new Promise(resolve => {
+    overlay.querySelector("#edit-event-cancel").onclick = () => { overlay.remove(); resolve(); };
+    overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); resolve(); } };
+    overlay.querySelector("#edit-event-save").onclick = async () => {
+      const newTime = new Date(overlay.querySelector("#edit-event-time").value).getTime() / 1000;
+      const newDesc = overlay.querySelector("#edit-event-desc").value;
+      try {
+        await fetch(`/api/brews/${currentBrewId}/event/${eventId}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ timestamp: newTime, description: newDesc })
+        });
+        showToast("Event updated", "success");
+        loadBrewDetail(currentBrewId);
+      } catch (e) { showToast("Failed", "error"); }
+      overlay.remove();
+      resolve();
+    };
+  });
+}
+
+async function deleteBrewEvent(eventId) {
+  if (!confirm("Delete this log entry?")) return;
+  try {
+    await fetch(`/api/brews/${currentBrewId}/event/${eventId}`, { method: "DELETE" });
+    showToast("Event deleted", "success");
+    loadBrewDetail(currentBrewId);
+  } catch (e) { showToast("Failed", "error"); }
 }
 
 const mdiEmoji = {
@@ -1737,12 +1846,24 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
 
   const tiltId = brew.tilt_device_id;
   const ctrlId = brew.controller_device_id;
-  if (!tiltId && !ctrlId) return;
+  const manualId = `manual-${sessionId}`;
+
+  // Need at least one data source (real device or manual readings)
+  if (!tiltId && !ctrlId) {
+    // Check if there are manual readings
+    const manualCheck = await fetch(`/api/history/${manualId}/temperature?start=${start}&limit=1`).then(r => r.json()).catch(() => []);
+    const manualSGCheck = await fetch(`/api/history/${manualId}/specificGravity?start=${start}&limit=1`).then(r => r.json()).catch(() => []);
+    if (!manualCheck.length && !manualSGCheck.length) return;
+  }
 
   const fetches = {};
   if (tiltId) {
     fetches.beerTemp = fetch(`/api/history/${tiltId}/temperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
     fetches.sg = fetch(`/api/history/${tiltId}/specificGravity?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
+  } else {
+    // Fall back to manual readings
+    fetches.beerTemp = fetch(`/api/history/${manualId}/temperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
+    fetches.sg = fetch(`/api/history/${manualId}/specificGravity?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
   }
   if (ctrlId) {
     fetches.fridgeTarget = fetch(`/api/history/${ctrlId}/targetTemperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
@@ -1843,7 +1964,7 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
 async function refreshBrewChart(brew, chart) {
   const tiltId = brew.tilt_device_id;
   const ctrlId = brew.controller_device_id;
-  if (!tiltId && !ctrlId) return;
+  const manualId = `manual-${brew.id}`;
 
   const brewStart = brew.started_at ? new Date(brew.started_at).getTime() / 1000 : (Date.now() / 1000) - 604800;
   const limit = 50000;
@@ -1851,10 +1972,9 @@ async function refreshBrewChart(brew, chart) {
   const mapPts = (arr) => arr.map(d => ({ x: d.timestamp * 1000, y: d.value }));
 
   const fetches = {};
-  if (tiltId) {
-    fetches.beerTemp = fetch(`/api/history/${tiltId}/temperature?start=${brewStart}&limit=${limit}`).then(r => r.json()).catch(() => []);
-    fetches.sg = fetch(`/api/history/${tiltId}/specificGravity?start=${brewStart}&limit=${limit}`).then(r => r.json()).catch(() => []);
-  }
+  const tempSource = tiltId || manualId;
+  fetches.beerTemp = fetch(`/api/history/${tempSource}/temperature?start=${brewStart}&limit=${limit}`).then(r => r.json()).catch(() => []);
+  fetches.sg = fetch(`/api/history/${tempSource}/specificGravity?start=${brewStart}&limit=${limit}`).then(r => r.json()).catch(() => []);
   if (ctrlId) {
     fetches.fridgeTarget = fetch(`/api/history/${ctrlId}/targetTemperature?start=${brewStart}&limit=${limit}`).then(r => r.json()).catch(() => []);
   }
@@ -2183,6 +2303,232 @@ document.querySelectorAll(".brew-event-btn").forEach(btn => {
     } catch (e) { showToast("Failed", "error"); }
   });
 });
+
+/* --- Temperature Profile --- */
+let profileSteps = [];  // Working copy while editing
+
+function renderProfileDesigner(brew) {
+  const profile = brew.temp_profile || {};
+  const steps = profile.steps || [];
+  profileSteps = JSON.parse(JSON.stringify(steps));  // deep copy for editing
+
+  // Mark the active step
+  if (brew.started_at && profileSteps.length) {
+    const elapsed = (Date.now() - new Date(brew.started_at).getTime()) / 86400000;
+    const sorted = [...profileSteps].sort((a, b) => a.day - b.day);
+    let activeIdx = -1;
+    for (let i = 0; i < sorted.length; i++) {
+      if (elapsed >= sorted[i].day) activeIdx = i;
+    }
+    profileSteps.forEach(s => s._active = false);
+    if (activeIdx >= 0) sorted[activeIdx]._active = true;
+  }
+
+  renderProfileSteps();
+  renderProfileTimeline(brew);
+}
+
+function renderProfileSteps() {
+  const el = document.getElementById("profile-steps-list");
+  if (!profileSteps.length) {
+    el.innerHTML = '<div class="help-text" style="margin:8px 0">No steps defined. Add steps below to build a temperature schedule.</div>';
+    return;
+  }
+  const sorted = [...profileSteps].sort((a, b) => a.day - b.day);
+  el.innerHTML = `<div class="profile-steps-table">
+    ${sorted.map((s, i) => `<div class="profile-step-row${s._active ? ' active' : ''}">
+      <span class="profile-step-day">Day ${s.day}${s.day % 1 !== 0 ? '' : '+'}</span>
+      <span class="profile-step-temp">${s.temp}°C</span>
+      <span class="profile-step-label">${esc(s.label || '')}</span>
+      <button class="brew-log-del-btn" onclick="removeProfileStep(${i})">x</button>
+    </div>`).join('')}
+  </div>`;
+}
+
+function renderProfileTimeline(brew) {
+  const el = document.getElementById("profile-timeline");
+  if (!profileSteps.length) { el.innerHTML = ''; return; }
+
+  const sorted = [...profileSteps].sort((a, b) => a.day - b.day);
+  const maxDay = Math.max(sorted[sorted.length - 1].day + 3, 14);
+  const minTemp = Math.min(...sorted.map(s => s.temp)) - 2;
+  const maxTemp = Math.max(...sorted.map(s => s.temp)) + 2;
+  const tempRange = maxTemp - minTemp || 1;
+
+  // Find current day
+  let currentDay = 0;
+  if (brew && brew.started_at) {
+    currentDay = (Date.now() - new Date(brew.started_at).getTime()) / 86400000;
+  }
+
+  const w = el.clientWidth || 500;
+  const h = 120;
+  const pad = { l: 45, r: 15, t: 10, b: 25 };
+  const cw = w - pad.l - pad.r;
+  const ch = h - pad.t - pad.b;
+
+  const xScale = (d) => pad.l + (d / maxDay) * cw;
+  const yScale = (t) => pad.t + ch - ((t - minTemp) / tempRange) * ch;
+
+  // Build stepped path
+  let path = '';
+  for (let i = 0; i < sorted.length; i++) {
+    const x = xScale(sorted[i].day);
+    const y = yScale(sorted[i].temp);
+    if (i === 0) path += `M${x},${y}`;
+    else path += `L${x},${y}`;
+    // Extend horizontally to next step or end
+    const nextDay = i < sorted.length - 1 ? sorted[i + 1].day : maxDay;
+    path += `L${xScale(nextDay)},${y}`;
+  }
+
+  // Fill path (same but closed to bottom)
+  let fillPath = path + `L${xScale(maxDay)},${yScale(minTemp)}L${xScale(0)},${yScale(minTemp)}Z`;
+
+  // Current day marker
+  const nowX = xScale(Math.min(currentDay, maxDay));
+
+  // Day gridlines
+  let gridLines = '';
+  for (let d = 0; d <= maxDay; d += Math.ceil(maxDay / 7)) {
+    const x = xScale(d);
+    gridLines += `<line x1="${x}" y1="${pad.t}" x2="${x}" y2="${h - pad.b}" stroke="#21262d"/>`;
+    gridLines += `<text x="${x}" y="${h - 5}" fill="#484f58" font-size="10" text-anchor="middle">Day ${d}</text>`;
+  }
+
+  // Temp labels
+  let tempLabels = '';
+  const steps = Math.max(2, Math.ceil(tempRange / 5));
+  for (let i = 0; i <= steps; i++) {
+    const t = minTemp + (i / steps) * tempRange;
+    const y = yScale(t);
+    tempLabels += `<text x="${pad.l - 5}" y="${y + 3}" fill="#484f58" font-size="10" text-anchor="end">${t.toFixed(0)}°</text>`;
+    tempLabels += `<line x1="${pad.l}" y1="${y}" x2="${w - pad.r}" y2="${y}" stroke="#21262d" stroke-dasharray="2,2"/>`;
+  }
+
+  // Step labels on the chart
+  let stepLabels = '';
+  for (let i = 0; i < sorted.length; i++) {
+    const x = xScale(sorted[i].day) + 4;
+    const y = yScale(sorted[i].temp) - 6;
+    if (sorted[i].label) {
+      stepLabels += `<text x="${x}" y="${y}" fill="#c9d1d9" font-size="10" font-weight="600">${esc(sorted[i].label)}</text>`;
+    }
+  }
+
+  el.innerHTML = `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    ${gridLines}${tempLabels}
+    <path d="${fillPath}" fill="rgba(46,160,67,0.1)" stroke="none"/>
+    <path d="${path}" fill="none" stroke="#2ea043" stroke-width="2"/>
+    ${stepLabels}
+    ${currentDay > 0 ? `<line x1="${nowX}" y1="${pad.t}" x2="${nowX}" y2="${h - pad.b}" stroke="#f0883e" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <text x="${nowX}" y="${pad.t - 2}" fill="#f0883e" font-size="9" text-anchor="middle">now</text>` : ''}
+    ${sorted.map(s => `<circle cx="${xScale(s.day)}" cy="${yScale(s.temp)}" r="4" fill="#2ea043" stroke="#0d1117" stroke-width="1.5"/>`).join('')}
+  </svg>`;
+}
+
+function addProfileStep() {
+  const day = parseFloat(document.getElementById("profile-step-day").value);
+  const temp = parseFloat(document.getElementById("profile-step-temp").value);
+  const label = document.getElementById("profile-step-label").value.trim();
+  if (isNaN(day) || isNaN(temp)) { showToast("Enter a day and temperature", "error"); return; }
+  profileSteps.push({ day, temp, label });
+  profileSteps.sort((a, b) => a.day - b.day);
+  renderProfileSteps();
+  // Re-render timeline if we have a brew context
+  if (currentBrewId) {
+    fetch(`/api/brews/${currentBrewId}`).then(r => r.json()).then(b => renderProfileTimeline(b));
+  }
+  document.getElementById("profile-step-day").value = "";
+  document.getElementById("profile-step-temp").value = "";
+  document.getElementById("profile-step-label").value = "";
+}
+
+function removeProfileStep(index) {
+  const sorted = [...profileSteps].sort((a, b) => a.day - b.day);
+  const step = sorted[index];
+  profileSteps = profileSteps.filter(s => s !== step);
+  renderProfileSteps();
+  if (currentBrewId) {
+    fetch(`/api/brews/${currentBrewId}`).then(r => r.json()).then(b => renderProfileTimeline(b));
+  }
+}
+
+async function saveProfile() {
+  if (!currentBrewId) return;
+  const profile = profileSteps.length ? { steps: profileSteps } : null;
+  try {
+    await fetch(`/api/brews/${currentBrewId}/update`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ temp_profile: profile })
+    });
+    showToast(profile ? "Profile saved" : "Profile cleared", "success");
+    loadBrewDetail(currentBrewId);
+  } catch (e) { showToast("Failed", "error"); }
+}
+
+async function clearProfile() {
+  if (!confirm("Clear the temperature profile?")) return;
+  profileSteps = [];
+  renderProfileSteps();
+  document.getElementById("profile-timeline").innerHTML = '';
+  await saveProfile();
+}
+
+/* --- Manual Reading --- */
+async function submitManualReading() {
+  if (!currentBrewId) return;
+  const sgVal = document.getElementById("manual-sg").value;
+  const tempVal = document.getElementById("manual-temp").value;
+  const body = {};
+  if (sgVal) body.sg = parseFloat(sgVal);
+  if (tempVal) body.temperature = parseFloat(tempVal);
+  if (!body.sg && !body.temperature) { showToast("Enter at least one reading", "error"); return; }
+  try {
+    await fetch(`/api/brews/${currentBrewId}/manual_reading`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    showToast("Reading logged", "success");
+    document.getElementById("manual-sg").value = "";
+    document.getElementById("manual-temp").value = "";
+    loadBrewDetail(currentBrewId);
+  } catch (e) { showToast("Failed", "error"); }
+}
+
+/* --- Cold Crash --- */
+async function coldCrash() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `<div class="modal-box" style="max-width:420px">
+    <h3 style="margin-bottom:8px">Cold Crash</h3>
+    <p style="color:#c9d1d9;margin-bottom:12px">This will set your fridge target to <strong>0.5°C</strong> to crash-cool your beer. The controller will start cooling immediately.</p>
+    <p style="color:#8b949e;margin-bottom:16px">If smart feedback is active, it will be stopped — cold crash takes direct control of the fridge.</p>
+    <div class="btn-row">
+      <button class="btn-stop" id="cold-crash-confirm">Start Cold Crash</button>
+      <button class="btn-save" id="cold-crash-cancel">Cancel</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector("#cold-crash-cancel").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.querySelector("#cold-crash-confirm").onclick = async () => {
+    overlay.remove();
+    try {
+      // Stop feedback if active
+      await fetch(`/api/brews/${currentBrewId}/feedback/stop`, { method: "POST" }).catch(() => {});
+      // Set target to 0.5°C
+      await fetch("/api/control/temperature", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: 0.5 }) });
+      // Log the event
+      await fetch(`/api/brews/${currentBrewId}/event`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_type: "cold_crash", description: "Cold crash started — fridge target set to 0.5°C" }) });
+      showToast("Cold crash started", "success");
+      loadBrewDetail(currentBrewId);
+    } catch (e) { showToast("Failed to start cold crash", "error"); }
+  };
+}
 
 /* --- SSE Console --- */
 function initConsole() {
