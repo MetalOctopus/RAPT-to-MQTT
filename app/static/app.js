@@ -1998,7 +1998,7 @@ document.getElementById("brew-recipe-photo-upload").addEventListener("change", a
 function renderBrewRecipePhoto(brew) {
   // Recipe text
   const textArea = document.getElementById("brew-recipe-text");
-  if (textArea) textArea.value = brew.recipe || "";
+  if (textArea && document.activeElement !== textArea) textArea.value = brew.recipe || "";
 
   // Recipe photo
   const container = document.getElementById("brew-recipe-photo-container");
