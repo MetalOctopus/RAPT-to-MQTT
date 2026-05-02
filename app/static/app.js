@@ -85,6 +85,7 @@ function showPage(page, id) {
     if (page === "tiltpi") loadTiltPiPage();
     if (page === "tilt-about") {} // static page, no loading needed
     if (page === "rapt-about") {} // static page, no loading needed
+    if (page === "recipes") loadRecipesPage();
     if (page === "legendary") loadLegendaryBrews();
   }
 }
@@ -2705,6 +2706,326 @@ fetch("/api/version").then(r => r.json()).then(d => {
     }
   } catch (e) {}
 })();
+
+/* ========== Coopers DIY Recipes ========== */
+let recipesCache = null;
+let recipesLoaded = false;
+
+const COOPERS_STORE = "https://www.diybeer.com/au/";
+const DIFFICULTY_ORDER = { "Easy": 0, "Intermediate": 1, "Advanced": 2, "Expert": 3 };
+
+async function loadRecipesPage() {
+  if (!recipesCache) {
+    try {
+      recipesCache = await (await fetch("/static/coopers_recipes.json")).json();
+      recipesLoaded = true;
+      populateRecipeFilters();
+    } catch (e) { return; }
+  }
+  filterAndRenderRecipes();
+}
+
+function populateRecipeFilters() {
+  const types = [...new Set(recipesCache.map(r => r.type).filter(Boolean))].sort();
+  const sel = document.getElementById("recipe-type-filter");
+  types.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t; opt.textContent = t;
+    sel.appendChild(opt);
+  });
+
+  // Wire up filter events
+  document.getElementById("recipe-search").addEventListener("input", filterAndRenderRecipes);
+  document.getElementById("recipe-type-filter").addEventListener("change", filterAndRenderRecipes);
+  document.getElementById("recipe-difficulty-filter").addEventListener("change", filterAndRenderRecipes);
+  document.getElementById("recipe-sort").addEventListener("change", filterAndRenderRecipes);
+}
+
+function filterAndRenderRecipes() {
+  if (!recipesCache) return;
+  const query = document.getElementById("recipe-search").value.toLowerCase().trim();
+  const typeFilter = document.getElementById("recipe-type-filter").value;
+  const diffFilter = document.getElementById("recipe-difficulty-filter").value;
+  const sortBy = document.getElementById("recipe-sort").value;
+
+  let filtered = recipesCache.filter(r => {
+    if (typeFilter && r.type !== typeFilter) return false;
+    if (diffFilter && r.difficulty !== diffFilter) return false;
+    if (query) {
+      const searchable = [r.name, r.type, r.difficulty, ...r.cans, ...r.yeasts,
+        ...r.hops.map(h => h.name), ...r.grains.map(g => g.name),
+        ...r.fermentables.map(f => f.name), r.other, r.variations].join(" ").toLowerCase();
+      if (!searchable.includes(query)) return false;
+    }
+    return true;
+  });
+
+  // Sort
+  filtered.sort((a, b) => {
+    if (sortBy === "name") return (a.name || "").localeCompare(b.name || "");
+    if (sortBy === "abv") return (b.abv || 0) - (a.abv || 0);
+    if (sortBy === "ibu") return (b.ibu || 0) - (a.ibu || 0);
+    if (sortBy === "ebc") return (a.ebc || 0) - (b.ebc || 0);
+    if (sortBy === "type") return (a.type || "").localeCompare(b.type || "");
+    if (sortBy === "difficulty") return (DIFFICULTY_ORDER[a.difficulty] || 0) - (DIFFICULTY_ORDER[b.difficulty] || 0);
+    return 0;
+  });
+
+  document.getElementById("recipe-count").textContent = filtered.length + " of " + recipesCache.length + " recipes";
+
+  const grid = document.getElementById("recipe-grid");
+  if (!filtered.length) {
+    grid.innerHTML = '<p class="help-text" style="padding:20px;text-align:center">No recipes match your filters.</p>';
+    return;
+  }
+
+  grid.innerHTML = filtered.map((r, idx) => {
+    const diffClass = (r.difficulty || "").toLowerCase().replace(/\s/g, "");
+    const abvStr = r.abv != null ? r.abv.toFixed(1) + "%" : "--";
+    const ibuStr = r.ibu != null ? Math.round(r.ibu) : "--";
+    const ebcStr = r.ebc != null ? Math.round(r.ebc) : "--";
+    const ebcColor = ebcToColor(r.ebc);
+    const ingredients = [...r.cans, ...r.fermentables.map(f => f.name), ...r.hops.map(h => h.name)].filter(Boolean).slice(0, 4);
+    return `
+      <div class="recipe-card" onclick="openRecipeDetail(${recipesCache.indexOf(r)})">
+        <div class="recipe-card-header">
+          <span class="recipe-card-name">${esc(r.name)}</span>
+          <span class="recipe-diff-badge ${diffClass}">${esc(r.difficulty || "")}</span>
+        </div>
+        <div class="recipe-card-type">${esc(r.type || "")}</div>
+        <div class="recipe-card-stats">
+          <span title="ABV"><strong>${abvStr}</strong> ABV</span>
+          <span title="IBU (Bitterness)"><strong>${ibuStr}</strong> IBU</span>
+          <span title="EBC (Colour)"><span class="ebc-dot" style="background:${ebcColor}"></span><strong>${ebcStr}</strong> EBC</span>
+          ${r.volume ? `<span title="Volume"><strong>${r.volume}L</strong></span>` : ""}
+        </div>
+        <div class="recipe-card-ingredients">${ingredients.map(i => `<span class="recipe-ing-tag">${esc(i)}</span>`).join("")}</div>
+      </div>`;
+  }).join("");
+}
+
+function ebcToColor(ebc) {
+  if (ebc == null) return "#8b949e";
+  if (ebc <= 4) return "#f8e8a0";
+  if (ebc <= 8) return "#f0d060";
+  if (ebc <= 12) return "#e8b820";
+  if (ebc <= 20) return "#d09010";
+  if (ebc <= 35) return "#a86810";
+  if (ebc <= 50) return "#804008";
+  if (ebc <= 80) return "#602808";
+  if (ebc <= 120) return "#401808";
+  return "#200800";
+}
+
+function openRecipeDetail(idx) {
+  const r = recipesCache[idx];
+  if (!r) return;
+  const vol = r.volume || 23;
+
+  const diffClass = (r.difficulty || "").toLowerCase().replace(/\s/g, "");
+  const ebcColor = ebcToColor(r.ebc);
+
+  let html = `
+    <div class="recipe-detail-header">
+      <h2>${esc(r.name)}</h2>
+      <div class="recipe-detail-meta">
+        <span class="recipe-diff-badge ${diffClass}">${esc(r.difficulty || "")}</span>
+        <span class="recipe-detail-type">${esc(r.type || "")}</span>
+        ${r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener" class="recipe-link-btn">View on Coopers DIY</a>` : ""}
+      </div>
+    </div>
+
+    <div class="recipe-detail-stats">
+      <div class="recipe-stat"><span class="recipe-stat-val">${r.abv != null ? r.abv.toFixed(1) + "%" : "--"}</span><span class="recipe-stat-label">ABV</span></div>
+      <div class="recipe-stat"><span class="recipe-stat-val">${r.ibu != null ? Math.round(r.ibu) : "--"}</span><span class="recipe-stat-label">IBU</span></div>
+      <div class="recipe-stat"><span class="recipe-stat-val"><span class="ebc-dot" style="background:${ebcColor}"></span>${r.ebc != null ? Math.round(r.ebc) : "--"}</span><span class="recipe-stat-label">EBC</span></div>
+      <div class="recipe-stat"><span class="recipe-stat-val">${vol}L</span><span class="recipe-stat-label">Volume</span></div>
+      ${r.ferment_temp ? `<div class="recipe-stat"><span class="recipe-stat-val">${r.ferment_temp}&deg;C</span><span class="recipe-stat-label">Ferment</span></div>` : ""}
+    </div>
+
+    <div class="recipe-scaler-row">
+      <label>Scale to: <input type="number" id="recipe-scale-vol" value="${vol}" min="1" max="100" step="0.5" onchange="rescaleRecipe(${idx})"> litres</label>
+      <span class="help-text">(original: ${vol}L)</span>
+    </div>
+
+    <div id="recipe-ingredients-${idx}">
+      ${renderRecipeIngredients(r, 1)}
+    </div>
+
+    ${r.method ? `<div class="recipe-section"><h3>Method</h3><p>${esc(r.method)}</p></div>` : ""}
+    ${r.variations ? `<div class="recipe-section"><h3>Variations</h3><p>${esc(r.variations)}</p></div>` : ""}
+
+    <div class="recipe-section">
+      <h3>Shopping List</h3>
+      <button class="btn-save" onclick="copyShoppingList(${idx})" id="btn-copy-list-${idx}">Copy to Clipboard</button>
+      <pre id="recipe-shopping-list-${idx}" class="shopping-list">${buildShoppingList(r, 1)}</pre>
+      <p class="help-text" style="margin-top:8px">
+        <a href="${COOPERS_STORE}" target="_blank" rel="noopener">Shop at Coopers DIY Beer</a> — support the homebrew community.
+      </p>
+    </div>
+  `;
+
+  document.getElementById("recipe-detail-content").innerHTML = html;
+  document.getElementById("recipe-detail-modal").style.display = "";
+}
+
+function closeRecipeDetail() {
+  document.getElementById("recipe-detail-modal").style.display = "none";
+}
+
+function rescaleRecipe(idx) {
+  const r = recipesCache[idx];
+  if (!r) return;
+  const origVol = r.volume || 23;
+  const newVol = parseFloat(document.getElementById("recipe-scale-vol").value) || origVol;
+  const scale = newVol / origVol;
+
+  const container = document.getElementById("recipe-ingredients-" + idx);
+  if (container) container.innerHTML = renderRecipeIngredients(r, scale);
+
+  const listEl = document.getElementById("recipe-shopping-list-" + idx);
+  if (listEl) listEl.textContent = buildShoppingList(r, scale);
+}
+
+function renderRecipeIngredients(r, scale) {
+  let html = "";
+
+  // Extract kits / cans
+  if (r.cans.length) {
+    html += '<div class="recipe-section"><h3>Extract Kits</h3><table class="recipe-ing-table"><tbody>';
+    r.cans.forEach(c => {
+      const qty = scale === 1 ? "1 can" : scaleDisplay(1 * scale, "can");
+      html += `<tr><td>${esc(c)}</td><td class="recipe-qty">${qty}</td></tr>`;
+    });
+    html += "</tbody></table></div>";
+  }
+
+  // Fermentables
+  if (r.fermentables.length) {
+    html += '<div class="recipe-section"><h3>Fermentables</h3><table class="recipe-ing-table"><tbody>';
+    r.fermentables.forEach(f => {
+      const baseQty = parseFloat(f.qty) || 1;
+      const scaled = baseQty * scale;
+      html += `<tr><td>${esc(f.name)}</td><td class="recipe-qty">${scaleWeight(scaled, "kg")}</td></tr>`;
+    });
+    html += "</tbody></table></div>";
+  }
+
+  // Hops
+  if (r.hops.length) {
+    html += '<div class="recipe-section"><h3>Hops</h3><table class="recipe-ing-table"><thead><tr><th>Hop</th><th>Weight</th><th>Addition</th></tr></thead><tbody>';
+    r.hops.forEach(h => {
+      const baseWt = parseFloat(h.weight) || 0;
+      const scaled = baseWt * scale;
+      html += `<tr><td>${esc(h.name)}</td><td class="recipe-qty">${scaleWeight(scaled, "g")}</td><td>${esc(h.method || "")}</td></tr>`;
+    });
+    html += "</tbody></table></div>";
+  }
+
+  // Grains
+  if (r.grains.length) {
+    html += '<div class="recipe-section"><h3>Grains</h3><table class="recipe-ing-table"><thead><tr><th>Grain</th><th>Weight</th><th>Method</th></tr></thead><tbody>';
+    r.grains.forEach(g => {
+      const baseWt = parseFloat(g.weight) || 0;
+      const scaled = baseWt * scale;
+      html += `<tr><td>${esc(g.name)}</td><td class="recipe-qty">${scaleWeight(scaled, "g")}</td><td>${esc(g.method || "")}</td></tr>`;
+    });
+    html += "</tbody></table></div>";
+  }
+
+  // Yeast
+  if (r.yeasts.length) {
+    html += '<div class="recipe-section"><h3>Yeast</h3><ul class="recipe-yeast-list">';
+    r.yeasts.forEach(y => { html += `<li>${esc(y)}</li>`; });
+    html += "</ul></div>";
+  }
+
+  // Other
+  if (r.other) {
+    html += `<div class="recipe-section"><h3>Other Ingredients</h3><p>${esc(r.other)}</p></div>`;
+  }
+
+  return html;
+}
+
+function scaleWeight(val, unit) {
+  if (val <= 0) return "--";
+  if (unit === "g") {
+    if (val >= 1000) return (val / 1000).toFixed(2) + " kg";
+    return Math.round(val) + " g";
+  }
+  if (unit === "kg") {
+    if (val < 0.1) return Math.round(val * 1000) + " g";
+    return val.toFixed(2) + " kg";
+  }
+  return val.toFixed(1) + " " + unit;
+}
+
+function scaleDisplay(val, unit) {
+  if (val === 1) return "1 " + unit;
+  return val.toFixed(1) + " " + unit + (val !== 1 ? "s" : "");
+}
+
+function buildShoppingList(r, scale) {
+  const lines = [];
+  lines.push(r.name + (scale !== 1 ? " (scaled to " + ((r.volume || 23) * scale).toFixed(1) + "L)" : " (" + (r.volume || 23) + "L)"));
+  lines.push("─".repeat(40));
+
+  if (r.cans.length) {
+    lines.push("EXTRACT KITS:");
+    r.cans.forEach(c => {
+      const qty = scale === 1 ? "1 can" : scaleDisplay(1 * scale, "can");
+      lines.push("  " + c + " — " + qty);
+    });
+  }
+
+  if (r.fermentables.length) {
+    lines.push("FERMENTABLES:");
+    r.fermentables.forEach(f => {
+      const baseQty = parseFloat(f.qty) || 1;
+      lines.push("  " + f.name + " — " + scaleWeight(baseQty * scale, "kg"));
+    });
+  }
+
+  if (r.hops.length) {
+    lines.push("HOPS:");
+    r.hops.forEach(h => {
+      const baseWt = parseFloat(h.weight) || 0;
+      lines.push("  " + h.name + " — " + scaleWeight(baseWt * scale, "g") + (h.method ? " (" + h.method + ")" : ""));
+    });
+  }
+
+  if (r.grains.length) {
+    lines.push("GRAINS:");
+    r.grains.forEach(g => {
+      const baseWt = parseFloat(g.weight) || 0;
+      lines.push("  " + g.name + " — " + scaleWeight(baseWt * scale, "g") + (g.method ? " (" + g.method + ")" : ""));
+    });
+  }
+
+  if (r.yeasts.length) {
+    lines.push("YEAST:");
+    r.yeasts.forEach(y => lines.push("  " + y));
+  }
+
+  if (r.other) {
+    lines.push("OTHER:");
+    lines.push("  " + r.other);
+  }
+
+  if (r.ferment_temp) lines.push("\nFERMENT: " + r.ferment_temp + "\u00b0C");
+
+  return lines.join("\n");
+}
+
+function copyShoppingList(idx) {
+  const el = document.getElementById("recipe-shopping-list-" + idx);
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => {
+    const btn = document.getElementById("btn-copy-list-" + idx);
+    if (btn) { btn.textContent = "Copied!"; setTimeout(() => btn.textContent = "Copy to Clipboard", 2000); }
+  });
+}
 
 // Periodic refreshes
 setInterval(checkStatus, 5000);

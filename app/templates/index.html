@@ -37,6 +37,11 @@
     </div>
 
     <div class="nav-section">
+      <div class="nav-label">Recipes</div>
+      <a class="nav-item" data-page="recipes" href="#">Coopers DIY Recipes</a>
+    </div>
+
+    <div class="nav-section">
       <div class="nav-label">Devices</div>
       <a class="nav-item" data-page="devices" href="#">Device Management</a>
       <div id="device-list" class="device-list">
@@ -590,6 +595,54 @@
         <div class="btn-row" style="margin-top:16px">
           <button onclick="saveLegendaryEdit()" class="btn-save">Save</button>
           <button onclick="closeLegendaryEdit()" class="btn-stop">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Coopers DIY Recipes Page -->
+    <div id="page-recipes" class="page">
+      <div class="panel recipe-shoutout">
+        <div class="shoutout-content">
+          <div class="shoutout-icon">&#x1F3C6;</div>
+          <div>
+            <h2>Coopers DIY Beer Recipes</h2>
+            <p>385 recipes compiled by the legendary <strong><a href="https://community.diybeer.com/profile/157558-shamus-osean/" target="_blank" rel="noopener">Shamus O'Sean</a></strong> from the <a href="https://community.diybeer.com" target="_blank" rel="noopener">DIY Beer Community</a>. Years of work cataloguing every Coopers recipe with full ingredients, hop schedules, grain bills, and brewing notes. An absolute treasure for the homebrewing community.</p>
+            <p class="help-text">Spreadsheet version 3.04.26. Data extracted and made interactive here with Shamus's blessing. All recipe links point to the original Coopers DIY Beer recipe pages.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="recipe-toolbar">
+          <input type="text" id="recipe-search" class="recipe-search" placeholder="Search recipes..." autocomplete="off">
+          <select id="recipe-type-filter">
+            <option value="">All Styles</option>
+          </select>
+          <select id="recipe-difficulty-filter">
+            <option value="">All Difficulties</option>
+            <option value="Easy">Easy</option>
+            <option value="Intermediate">Intermediate</option>
+            <option value="Advanced">Advanced</option>
+            <option value="Expert">Expert</option>
+          </select>
+          <select id="recipe-sort">
+            <option value="name">Sort: Name</option>
+            <option value="abv">Sort: ABV</option>
+            <option value="ibu">Sort: IBU</option>
+            <option value="ebc">Sort: Colour (EBC)</option>
+            <option value="type">Sort: Style</option>
+            <option value="difficulty">Sort: Difficulty</option>
+          </select>
+          <span id="recipe-count" class="recipe-count"></span>
+        </div>
+        <div id="recipe-grid" class="recipe-grid"></div>
+      </div>
+
+      <!-- Recipe Detail Modal -->
+      <div id="recipe-detail-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeRecipeDetail()">
+        <div class="modal-content recipe-detail-modal">
+          <button class="recipe-modal-close" onclick="closeRecipeDetail()">&times;</button>
+          <div id="recipe-detail-content"></div>
         </div>
       </div>
     </div>
