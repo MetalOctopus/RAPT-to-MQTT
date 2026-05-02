@@ -2543,8 +2543,8 @@ function renderProfileSteps() {
 
 function _profileLayout(el) {
   const w = el.clientWidth || 500;
-  const h = 120;
-  const pad = { l: 45, r: 15, t: 10, b: 25 };
+  const h = 200;
+  const pad = { l: 45, r: 15, t: 15, b: 30 };
   const cw = w - pad.l - pad.r;
   const ch = h - pad.t - pad.b;
   return { w, h, pad, cw, ch };
@@ -2716,21 +2716,29 @@ function _attachProfileDragHandlers(el, sorted, layout, scales, brew) {
   const dots = svg.querySelectorAll('.profile-step-dot');
   const { pad } = layout;
 
+  // Build a map from sorted index to profileSteps index for reliable reference
+  const used = new Set();
+  const sortedToOrigIdx = sorted.map(s => {
+    const idx = profileSteps.findIndex((p, i) => {
+      if (used.has(i)) return false;
+      return p.day === s.day && p.temp === s.temp;
+    });
+    if (idx >= 0) used.add(idx);
+    return idx;
+  });
+
   dots.forEach(dot => {
     let dragging = false;
     let dragLabel = null;
-    let origStep = null;
-    let stepRef = null;
+    let origIdx = -1;
 
     const onPointerDown = (e) => {
       e.preventDefault();
       e.stopPropagation();
       dragging = true;
       _profileDragOccurred = false;
-      const idx = parseInt(dot.getAttribute('data-index'));
-      origStep = sorted[idx];
-      // Find the matching step in profileSteps by reference values
-      stepRef = profileSteps.find(s => s.day === origStep.day && s.temp === origStep.temp);
+      const sortIdx = parseInt(dot.getAttribute('data-index'));
+      origIdx = sortedToOrigIdx[sortIdx];
 
       dot.style.cursor = 'grabbing';
       dot.setAttribute('r', '8');
@@ -2799,9 +2807,9 @@ function _attachProfileDragHandlers(el, sorted, layout, scales, brew) {
       const newDay = Math.max(0, _snapVal(scales.xInv(cx), 0.5));
       const newTemp = _snapVal(scales.yInv(cy), 0.5);
 
-      if (stepRef) {
-        stepRef.day = newDay;
-        stepRef.temp = newTemp;
+      if (origIdx >= 0 && origIdx < profileSteps.length) {
+        profileSteps[origIdx].day = newDay;
+        profileSteps[origIdx].temp = newTemp;
       }
       profileSteps.sort((a, b) => a.day - b.day);
       renderProfileSteps();
@@ -2814,9 +2822,10 @@ function _attachProfileDragHandlers(el, sorted, layout, scales, brew) {
     dot.addEventListener('dblclick', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const idx = parseInt(dot.getAttribute('data-index'));
-      const step = sorted[idx];
-      profileSteps = profileSteps.filter(s => !(s.day === step.day && s.temp === step.temp));
+      const sortIdx = parseInt(dot.getAttribute('data-index'));
+      const origI = sortedToOrigIdx[sortIdx];
+      const step = sorted[sortIdx];
+      if (origI >= 0) profileSteps.splice(origI, 1);
       renderProfileSteps();
       renderProfileTimeline(_profileBrew);
       showToast(`Removed step: Day ${step.day}, ${step.temp}°C`, 'success');
