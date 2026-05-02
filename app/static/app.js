@@ -508,7 +508,7 @@ async function loadTiltDefaultCharts(deviceId) {
     const start = (Date.now() / 1000) - 86400;
 
     // Temperature chart with red-blue gradient (4-30 C)
-    const tempData = await (await fetch(`/api/history/${deviceId}/temperature?start=${start}&limit=10000`)).json();
+    const tempData = await (await fetch(`/api/history/${deviceId}/temperature?start=${start}`)).json();
     if (tiltTempChart) { tiltTempChart.destroy(); tiltTempChart = null; }
     if (tempData.length) {
       let pts = tempData.map(d => ({ x: d.timestamp * 1000, y: d.value }));
@@ -540,7 +540,7 @@ async function loadTiltDefaultCharts(deviceId) {
     }
 
     // SG chart with theme-appropriate line
-    const sgData = await (await fetch(`/api/history/${deviceId}/specificGravity?start=${start}&limit=10000`)).json();
+    const sgData = await (await fetch(`/api/history/${deviceId}/specificGravity?start=${start}`)).json();
     if (tiltSgChart) { tiltSgChart.destroy(); tiltSgChart = null; }
     if (sgData.length) {
       let pts = sgData.map(d => ({ x: d.timestamp * 1000, y: d.value }));
@@ -683,8 +683,7 @@ async function loadChartMetrics(deviceId, selectId) {
 async function addChartSeries(chartObj, seriesArr, canvasId, deviceId, metric, range, axis) {
   try {
     const start = (Date.now() / 1000) - parseInt(range);
-    const limit = parseInt(range) >= 604800 ? 50000 : 10000;
-    const data = await (await fetch(`/api/history/${deviceId}/${metric}?start=${start}&limit=${limit}`)).json();
+    const data = await (await fetch(`/api/history/${deviceId}/${metric}?start=${start}`)).json();
     if (!data.length) { showToast("No data for this range", "error"); return chartObj; }
 
     const color = chartColors[colorIdx++ % chartColors.length];
@@ -791,7 +790,7 @@ async function loadRssiChart(deviceId) {
   if (rssiChart) { rssiChart.destroy(); rssiChart = null; }
   try {
     const start = (Date.now() / 1000) - 86400;
-    const data = await (await fetch(`/api/history/${deviceId}/rssi?start=${start}&limit=5000`)).json();
+    const data = await (await fetch(`/api/history/${deviceId}/rssi?start=${start}`)).json();
     if (!data.length) return;
     const ctx = document.getElementById("rssi-chart").getContext("2d");
     rssiChart = new Chart(ctx, {
@@ -1960,7 +1959,6 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
   if (forceRebuild && existing) { existing.destroy(); delete brewCharts[sessionId]; }
 
   const start = _brewChartStart(brew);
-  const limit = 50000;
 
   const tiltId = brew.tilt_device_id;
   const ctrlId = brew.controller_device_id;
@@ -1975,11 +1973,11 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
 
   const fetches = {};
   if (tiltId) {
-    fetches.beerTemp = fetch(`/api/history/${tiltId}/temperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
-    fetches.sg = fetch(`/api/history/${tiltId}/specificGravity?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
+    fetches.beerTemp = fetch(`/api/history/${tiltId}/temperature?start=${start}`).then(r => r.json()).catch(() => []);
+    fetches.sg = fetch(`/api/history/${tiltId}/specificGravity?start=${start}`).then(r => r.json()).catch(() => []);
   } else {
-    fetches.beerTemp = fetch(`/api/history/${manualId}/temperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
-    fetches.sg = fetch(`/api/history/${manualId}/specificGravity?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
+    fetches.beerTemp = fetch(`/api/history/${manualId}/temperature?start=${start}`).then(r => r.json()).catch(() => []);
+    fetches.sg = fetch(`/api/history/${manualId}/specificGravity?start=${start}`).then(r => r.json()).catch(() => []);
   }
   // Beer target temp (not fridge target) — from session/profile/feedback history
   fetches.beerTarget = fetch(`/api/brews/${sessionId}/target-history`).then(r => r.json()).catch(() => []);
@@ -2089,14 +2087,13 @@ async function refreshBrewChart(brew, chart) {
   const manualId = `manual-${brew.id}`;
 
   const start = _brewChartStart(brew);
-  const limit = 50000;
   const doFilter = brewFilterEnabled[brew.id];
   const mapPts = (arr) => arr.map(d => ({ x: d.timestamp * 1000, y: d.value }));
 
   const fetches = {};
   const tempSource = tiltId || manualId;
-  fetches.beerTemp = fetch(`/api/history/${tempSource}/temperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
-  fetches.sg = fetch(`/api/history/${tempSource}/specificGravity?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
+  fetches.beerTemp = fetch(`/api/history/${tempSource}/temperature?start=${start}`).then(r => r.json()).catch(() => []);
+  fetches.sg = fetch(`/api/history/${tempSource}/specificGravity?start=${start}`).then(r => r.json()).catch(() => []);
   fetches.beerTarget = fetch(`/api/brews/${brew.id}/target-history`).then(r => r.json()).catch(() => []);
 
   const keys = Object.keys(fetches);

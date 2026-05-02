@@ -346,7 +346,7 @@ def get_device_photo(device_id):
 def get_history(device_id, metric):
     start = request.args.get("start", type=float)
     end = request.args.get("end", type=float)
-    limit = request.args.get("limit", 10000, type=int)
+    limit = request.args.get("limit", type=int)
     data = history.query(device_id, metric, start=start, end=end, limit=limit)
     return jsonify(data)
 

@@ -110,7 +110,7 @@ class HistoryStore:
                     rows
                 )
 
-    def query(self, device_id, metric, start=None, end=None, limit=50000):
+    def query(self, device_id, metric, start=None, end=None, limit=None):
         """Query history for a device metric. Returns list of {timestamp, value}."""
         sql = "SELECT timestamp, value FROM device_history WHERE device_id = ? AND metric = ?"
         params = [device_id, metric]
@@ -120,11 +120,13 @@ class HistoryStore:
         if end:
             sql += " AND timestamp <= ?"
             params.append(end)
-        sql += " ORDER BY timestamp DESC LIMIT ?"
-        params.append(limit)
+        sql += " ORDER BY timestamp ASC"
+        if limit:
+            sql += " LIMIT ?"
+            params.append(limit)
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
-        return [{"timestamp": r["timestamp"], "value": r["value"]} for r in reversed(rows)]
+        return [{"timestamp": r["timestamp"], "value": r["value"]} for r in rows]
 
     def get_metrics(self, device_id):
         """Get list of available metrics for a device."""
