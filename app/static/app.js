@@ -1720,8 +1720,15 @@ let brewChartCleared = {};
 
 async function autoPopulateBrewChart(brew, forceRebuild) {
   const sessionId = brew.id;
-  if (!forceRebuild && (brewCharts[sessionId] || brewChartCleared[sessionId])) return;
-  if (forceRebuild && brewCharts[sessionId]) { brewCharts[sessionId].destroy(); delete brewCharts[sessionId]; }
+  if (brewChartCleared[sessionId]) return;
+
+  // If chart already exists, update its data in-place (live refresh)
+  const existing = brewCharts[sessionId];
+  if (existing && !forceRebuild) {
+    await refreshBrewChart(brew, existing);
+    return;
+  }
+  if (forceRebuild && existing) { existing.destroy(); delete brewCharts[sessionId]; }
 
   // Use brew start date, not relative time — show entire fermentation
   const brewStart = brew.started_at ? new Date(brew.started_at).getTime() / 1000 : (Date.now() / 1000) - 604800;
@@ -1738,9 +1745,7 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
     fetches.sg = fetch(`/api/history/${tiltId}/specificGravity?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
   }
   if (ctrlId) {
-    fetches.fridgeTemp = fetch(`/api/history/${ctrlId}/temperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
     fetches.fridgeTarget = fetch(`/api/history/${ctrlId}/targetTemperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
-    fetches.mode = fetch(`/api/history/${ctrlId}/mode?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
   }
 
   const keys = Object.keys(fetches);
@@ -1758,28 +1763,18 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
     let pts = mapPts(results.beerTemp);
     if (doFilter) pts = filterOutliers(pts, 2.0);
     datasets.push({
-      label: "Beer Temp (\u00b0C)",
+      label: "Actual Temp (\u00b0C)",
       data: pts,
       borderColor: "#f0883e",
       borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false, yAxisID: "y",
     });
   }
-  if (results.fridgeTemp?.length) {
-    let pts = mapPts(results.fridgeTemp);
-    if (doFilter) pts = filterOutliers(pts, 2.0);
-    datasets.push({
-      label: "Fridge Temp (\u00b0C)",
-      data: pts,
-      borderColor: "#58a6ff",
-      borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false, yAxisID: "y",
-    });
-  }
   if (results.fridgeTarget?.length) {
     datasets.push({
-      label: "Fridge Target (\u00b0C)",
+      label: "Target Temp (\u00b0C)",
       data: mapPts(results.fridgeTarget),
       borderColor: "#2ea043",
-      borderWidth: 1, borderDash: [5, 5], pointRadius: 0, fill: false, yAxisID: "y",
+      borderWidth: 2, borderDash: [5, 5], pointRadius: 0, fill: false, yAxisID: "y",
     });
   }
   if (results.sg?.length) {
@@ -1791,28 +1786,6 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
       data: pts,
       borderColor: "#c9d1d9",
       borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false, yAxisID: "y1",
-    });
-  }
-
-  let hasMode = false;
-  if (results.mode?.length) {
-    hasMode = true;
-    // Build per-point background colors for the fill
-    const modePoints = results.mode.map(d => ({ x: d.timestamp * 1000, y: d.value }));
-    const modeBg = results.mode.map(d => {
-      if (d.value < 0) return "rgba(88,166,255,0.15)";
-      if (d.value > 0) return "rgba(240,136,62,0.15)";
-      return "rgba(0,0,0,0)";
-    });
-    datasets.push({
-      label: "Mode",
-      data: modePoints,
-      borderWidth: 0,
-      pointRadius: 0,
-      fill: true,
-      stepped: true,
-      yAxisID: "yMode",
-      backgroundColor: modeBg,
     });
   }
 
@@ -1829,10 +1802,6 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
     scales.y1 = { position: "right", grace: "10%", title: { display: true, text: "Specific Gravity", color: "#8b949e" },
                   ticks: { color: "#8b949e", callback: v => v.toFixed(3) }, grid: { drawOnChartArea: false } };
   }
-  if (hasMode) {
-    scales.yMode = { display: false, min: -1.5, max: 1.5 };
-  }
-
   const ctx = document.getElementById("brew-chart").getContext("2d");
   brewCharts[sessionId] = new Chart(ctx, {
     type: "line",
@@ -1845,6 +1814,59 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
     },
   });
   brewChartSeries[sessionId] = datasets.map(d => ({ label: d.label }));
+}
+
+/* Refresh brew chart data in-place without rebuilding */
+async function refreshBrewChart(brew, chart) {
+  const tiltId = brew.tilt_device_id;
+  const ctrlId = brew.controller_device_id;
+  if (!tiltId && !ctrlId) return;
+
+  const brewStart = brew.started_at ? new Date(brew.started_at).getTime() / 1000 : (Date.now() / 1000) - 604800;
+  const limit = 50000;
+  const doFilter = brewFilterEnabled[brew.id];
+  const mapPts = (arr) => arr.map(d => ({ x: d.timestamp * 1000, y: d.value }));
+
+  const fetches = {};
+  if (tiltId) {
+    fetches.beerTemp = fetch(`/api/history/${tiltId}/temperature?start=${brewStart}&limit=${limit}`).then(r => r.json()).catch(() => []);
+    fetches.sg = fetch(`/api/history/${tiltId}/specificGravity?start=${brewStart}&limit=${limit}`).then(r => r.json()).catch(() => []);
+  }
+  if (ctrlId) {
+    fetches.fridgeTarget = fetch(`/api/history/${ctrlId}/targetTemperature?start=${brewStart}&limit=${limit}`).then(r => r.json()).catch(() => []);
+  }
+
+  const keys = Object.keys(fetches);
+  const values = await Promise.all(keys.map(k => fetches[k]));
+  const results = {};
+  keys.forEach((k, i) => results[k] = values[i]);
+
+  // Map labels to fresh data
+  const dataMap = {};
+  if (results.beerTemp?.length) {
+    let pts = mapPts(results.beerTemp);
+    if (doFilter) pts = filterOutliers(pts, 2.0);
+    dataMap["Actual Temp (\u00b0C)"] = pts;
+  }
+  if (results.fridgeTarget?.length) {
+    dataMap["Target Temp (\u00b0C)"] = mapPts(results.fridgeTarget);
+  }
+  if (results.sg?.length) {
+    let pts = mapPts(results.sg);
+    if (doFilter) pts = filterOutliers(pts, 0.002);
+    dataMap["Specific Gravity"] = pts;
+  }
+
+  // Update existing datasets in-place
+  let changed = false;
+  for (const ds of chart.data.datasets) {
+    const fresh = dataMap[ds.label];
+    if (fresh && fresh.length !== ds.data.length) {
+      ds.data = fresh;
+      changed = true;
+    }
+  }
+  if (changed) chart.update("none"); // "none" = no animation
 }
 
 /* Brew chart (persistent per session) */
