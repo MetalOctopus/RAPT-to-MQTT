@@ -546,7 +546,8 @@ def stop_brew_feedback(session_id):
 
 @app.route("/api/brews/<session_id>/feedback/log", methods=["GET"])
 def brew_feedback_log(session_id):
-    data = history.get_temp_feedback_log(session_id=session_id)
+    since = request.args.get("since", type=float)
+    data = history.get_temp_feedback_log(session_id=session_id, since=since)
     return jsonify(data)
 
 
@@ -580,7 +581,7 @@ def brew_target_history(session_id):
                 points.append({"timestamp": ev["timestamp"], "value": float(m.group(1))})
 
     # Also pull from feedback log (more granular, every 5 min when active)
-    fb_log = history.get_temp_feedback_log(session_id=session_id, limit=50000)
+    fb_log = history.get_temp_feedback_log(session_id=session_id)
     for entry in fb_log:
         if entry.get("target_beer_temp") is not None:
             points.append({"timestamp": entry["timestamp"], "value": float(entry["target_beer_temp"])})

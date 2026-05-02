@@ -2198,17 +2198,13 @@ async function loadFeedbackChart(sessionId, forceReload) {
   if (feedbackChart) { feedbackChart.destroy(); feedbackChart = null; }
   lastFeedbackSession = sessionId;
   try {
-    const data = await (await fetch(`/api/brews/${sessionId}/feedback/log`)).json();
-    if (!data.length) return;
-
-    let pts;
-    if (feedbackRangeAll) {
-      pts = data; // entire brew
-    } else {
-      const cutoff = Date.now() - (24 * 60 * 60 * 1000);
-      pts = data.filter(d => d.timestamp * 1000 >= cutoff);
-      if (!pts.length) pts = data.slice(-1); // show at least the last point
+    let url = `/api/brews/${sessionId}/feedback/log`;
+    if (!feedbackRangeAll) {
+      const since = (Date.now() / 1000) - 86400;
+      url += `?since=${since}`;
     }
+    const pts = await (await fetch(url)).json();
+    if (!pts.length) return;
 
     // Compute Y range: find min/max across all temps, pad by 2°C
     let allTemps = [];

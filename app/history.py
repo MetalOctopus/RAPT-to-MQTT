@@ -220,17 +220,25 @@ class HistoryStore:
                      old_target, new_target, error, adjustment)
                 )
 
-    def get_temp_feedback_log(self, session_id=None, limit=500):
+    def get_temp_feedback_log(self, session_id=None, since=None, limit=None):
         sql = "SELECT * FROM temp_feedback_log"
+        clauses = []
         params = []
         if session_id:
-            sql += " WHERE session_id = ?"
+            clauses.append("session_id = ?")
             params.append(session_id)
-        sql += " ORDER BY timestamp DESC LIMIT ?"
-        params.append(limit)
+        if since is not None:
+            clauses.append("timestamp >= ?")
+            params.append(since)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY timestamp ASC"
+        if limit:
+            sql += " LIMIT ?"
+            params.append(limit)
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
-        return [dict(r) for r in reversed(rows)]
+        return [dict(r) for r in rows]
 
     # --- Reminders ---
 
