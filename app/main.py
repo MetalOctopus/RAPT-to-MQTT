@@ -550,6 +550,57 @@ def brew_feedback_log(session_id):
     return jsonify(data)
 
 
+@app.route("/api/brews/<session_id>/target-history", methods=["GET"])
+def brew_target_history(session_id):
+    """Return beer target temp as a time-series [{timestamp, value}].
+
+    Built from: session start target, profile_step events, and feedback log.
+    """
+    session_json = history.get_session(session_id)
+    if not session_json:
+        return jsonify([])
+    session = json.loads(session_json)
+
+    started_ts = time.mktime(time.strptime(session["started_at"], "%Y-%m-%dT%H:%M:%S")) if session.get("started_at") else None
+    initial_target = session.get("target_beer_temp")
+    if initial_target is None or started_ts is None:
+        return jsonify([])
+
+    # Start with the initial target
+    points = [{"timestamp": started_ts, "value": float(initial_target)}]
+
+    # Add profile_step events (each one sets a new target)
+    import re as _re
+    events = history.get_events(session_id)
+    for ev in events:
+        if ev["event_type"] == "profile_step":
+            desc = ev.get("description", "")
+            m = _re.search(r'(\d+\.?\d*)\s*°C', desc)
+            if m:
+                points.append({"timestamp": ev["timestamp"], "value": float(m.group(1))})
+
+    # Also pull from feedback log (more granular, every 5 min when active)
+    fb_log = history.get_temp_feedback_log(session_id=session_id, limit=50000)
+    for entry in fb_log:
+        if entry.get("target_beer_temp") is not None:
+            points.append({"timestamp": entry["timestamp"], "value": float(entry["target_beer_temp"])})
+
+    # Deduplicate and sort by timestamp
+    seen = set()
+    unique = []
+    for p in sorted(points, key=lambda x: x["timestamp"]):
+        key = (round(p["timestamp"], 1), round(p["value"], 2))
+        if key not in seen:
+            seen.add(key)
+            unique.append(p)
+
+    # Extend to current time so the line reaches "now"
+    if unique:
+        unique.append({"timestamp": time.time(), "value": unique[-1]["value"]})
+
+    return jsonify(unique)
+
+
 @app.route("/api/brews/<session_id>/reminder", methods=["POST"])
 def add_brew_reminder(session_id):
     data = request.get_json()

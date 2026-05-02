@@ -409,72 +409,81 @@
       <!-- Brew Chart (persistent) -->
       <div class="panel">
         <h2>Fermentation Chart</h2>
-        <div class="chart-controls">
-          <div class="form-group">
-            <label for="brew-chart-metric">Metric</label>
-            <select id="brew-chart-metric">
-              <option value="temperature">Temperature</option>
-              <option value="specificGravity">Specific Gravity</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="brew-chart-range">Range</label>
-            <select id="brew-chart-range">
-              <option value="86400">24 hours</option>
-              <option value="259200">3 days</option>
-              <option value="604800" selected>7 days</option>
-            </select>
-          </div>
-          <button id="btn-brew-add-series" class="btn-save" style="align-self:flex-end">Add Series</button>
-          <button id="btn-brew-clear-chart" class="btn-stop" style="align-self:flex-end">Clear</button>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <button id="btn-brew-chart-range" class="btn-save btn-sm" onclick="toggleBrewChartRange()">Show: Last 24h</button>
+          <button id="btn-brew-filter" class="btn-save btn-sm">Filter: ON</button>
         </div>
         <div class="chart-container">
           <canvas id="brew-chart"></canvas>
         </div>
-        <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
-          <button id="btn-brew-filter" class="btn-save btn-sm">Filter: ON</button>
-          <span class="help-text" style="line-height:1.4">Removes physically impossible spikes (e.g. a -20°C TILT reading or a sudden SG jump from sloshing). Filters any change faster than 2°C/min for temperature or 0.002 SG/min. Turn off to see raw unfiltered data.</span>
-        </div>
+        <details class="accordion" style="margin-top:8px">
+          <summary>Add Extra Series</summary>
+          <div class="accordion-body" style="padding-top:8px">
+            <div class="chart-controls">
+              <div class="form-group">
+                <label for="brew-chart-metric">Metric</label>
+                <select id="brew-chart-metric">
+                  <option value="temperature">Temperature</option>
+                  <option value="specificGravity">Specific Gravity</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="brew-chart-range">Range</label>
+                <select id="brew-chart-range">
+                  <option value="86400">24 hours</option>
+                  <option value="259200">3 days</option>
+                  <option value="604800" selected>7 days</option>
+                </select>
+              </div>
+              <button id="btn-brew-add-series" class="btn-save" style="align-self:flex-end">Add Series</button>
+              <button id="btn-brew-clear-chart" class="btn-stop" style="align-self:flex-end">Clear</button>
+            </div>
+            <p class="help-text" style="margin-top:6px">Manually add extra data series to the chart beyond the default Actual Temp, Target Temp, and SG.</p>
+          </div>
+        </details>
       </div>
 
-      <!-- Temperature Profile -->
-      <div class="panel brew-needs-ctrl" id="profile-panel">
-        <h2>Temperature Profile</h2>
-        <p class="help-text" style="margin-bottom:12px">Design a multi-step fermentation schedule. The system automatically advances through each step and sets the controller target. Works with or without smart feedback.</p>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-          <label for="load-legendary-profile" style="white-space:nowrap;font-size:0.85em;color:#8b949e">Load from Legendary Brew:</label>
-          <select id="load-legendary-profile" style="flex:1;max-width:300px" onchange="loadLegendaryProfile()">
-            <option value="">-- Select a brew --</option>
-          </select>
-        </div>
-        <div id="profile-timeline" class="profile-timeline"></div>
-        <div id="profile-steps-list"></div>
-        <div class="profile-add-step" style="margin-top:12px">
-          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
-            <div class="form-group" style="flex:0 0 80px">
-              <label for="profile-step-day">Start Day</label>
-              <input type="number" id="profile-step-day" min="0" step="0.5" placeholder="0" style="width:100%">
+      <!-- Temperature Profile (accordion — advanced) -->
+      <details class="accordion brew-needs-ctrl" id="profile-panel">
+        <summary>Temperature Profile</summary>
+        <div class="accordion-body">
+          <p class="help-text" style="margin-bottom:12px">Design a multi-step fermentation schedule. The system automatically advances through each step and sets the controller target. Works with or without smart feedback.</p>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <label for="load-legendary-profile" style="white-space:nowrap;font-size:0.85em;color:#8b949e">Load from Legendary Brew:</label>
+            <select id="load-legendary-profile" style="flex:1;max-width:300px" onchange="loadLegendaryProfile()">
+              <option value="">-- Select a brew --</option>
+            </select>
+          </div>
+          <div id="profile-timeline" class="profile-timeline"></div>
+          <div id="profile-steps-list"></div>
+          <div class="profile-add-step" style="margin-top:12px">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+              <div class="form-group" style="flex:0 0 80px">
+                <label for="profile-step-day">Start Day</label>
+                <input type="number" id="profile-step-day" min="0" step="0.5" placeholder="0" style="width:100%">
+              </div>
+              <div class="form-group" style="flex:0 0 80px">
+                <label for="profile-step-temp">Temp (°C)</label>
+                <input type="number" id="profile-step-temp" min="0" max="35" step="0.5" placeholder="18" style="width:100%">
+              </div>
+              <div class="form-group" style="flex:1;min-width:120px">
+                <label for="profile-step-label">Label</label>
+                <input type="text" id="profile-step-label" placeholder="e.g. Primary, Diacetyl rest, Cold crash" style="width:100%">
+              </div>
+              <button class="btn-save" onclick="addProfileStep()" style="white-space:nowrap">Add Step</button>
             </div>
-            <div class="form-group" style="flex:0 0 80px">
-              <label for="profile-step-temp">Temp (°C)</label>
-              <input type="number" id="profile-step-temp" min="0" max="35" step="0.5" placeholder="18" style="width:100%">
-            </div>
-            <div class="form-group" style="flex:1;min-width:120px">
-              <label for="profile-step-label">Label</label>
-              <input type="text" id="profile-step-label" placeholder="e.g. Primary, Diacetyl rest, Cold crash" style="width:100%">
-            </div>
-            <button class="btn-save" onclick="addProfileStep()" style="white-space:nowrap">Add Step</button>
+          </div>
+          <div class="btn-row" style="margin-top:12px;gap:8px">
+            <button class="btn-save" onclick="saveProfile()">Save Profile</button>
+            <button class="btn-stop" onclick="clearProfile()">Clear Profile</button>
           </div>
         </div>
-        <div class="btn-row" style="margin-top:12px;gap:8px">
-          <button class="btn-save" onclick="saveProfile()">Save Profile</button>
-          <button class="btn-stop" onclick="clearProfile()">Clear Profile</button>
-        </div>
-      </div>
+      </details>
 
-      <!-- Smart Temp Feedback (needs both Tilt + Controller) -->
-      <div class="panel" id="feedback-panel">
-        <h2>Smart Temperature Feedback</h2>
+      <!-- Smart Temp Feedback (accordion — advanced) -->
+      <details class="accordion" id="feedback-panel">
+        <summary>Smart Temperature Feedback</summary>
+        <div class="accordion-body">
         <p id="feedback-explanation" class="help-text" style="margin:4px 0 12px 0;line-height:1.6"></p>
         <div class="controls" style="margin-bottom:12px">
           <button id="btn-feedback-start" class="btn-save">Enable</button>
@@ -526,17 +535,19 @@
             </div>
           </details>
           <div class="controls" style="margin-top:12px;margin-bottom:8px">
-            <button id="btn-feedback-range" class="btn-small" onclick="toggleFeedbackRange()">Show: Last 24 Hours</button>
+            <button id="btn-feedback-range" class="btn-small" onclick="toggleFeedbackRange()">Show: Entire Brew</button>
           </div>
           <div class="chart-container">
             <canvas id="feedback-chart"></canvas>
           </div>
         </div>
-      </div>
+        </div>
+      </details>
 
-      <!-- Reminders -->
-      <div class="panel">
-        <h2>Reminders &amp; Notifications</h2>
+      <!-- Reminders (accordion — advanced) -->
+      <details class="accordion">
+        <summary>Reminders &amp; Notifications</summary>
+        <div class="accordion-body">
         <div class="reminder-form-grid">
           <div class="form-group">
             <label for="reminder-type">When</label>
@@ -572,23 +583,26 @@
           </div>
         </div>
         <div id="reminder-list" style="margin-top:12px"></div>
-      </div>
+        </div>
+      </details>
 
-      <!-- Recipe -->
-      <div class="panel">
-        <h2>Recipe</h2>
-        <div class="form-group">
-          <textarea id="brew-recipe-text" rows="6" placeholder="Grain bill, hops, yeast, water profile, mash temps..."></textarea>
+      <!-- Recipe (accordion) -->
+      <details class="accordion">
+        <summary>Recipe</summary>
+        <div class="accordion-body">
+          <div class="form-group">
+            <textarea id="brew-recipe-text" rows="6" placeholder="Grain bill, hops, yeast, water profile, mash temps..."></textarea>
+          </div>
+          <div class="btn-row" style="margin-bottom:12px">
+            <button id="btn-save-recipe" class="btn-save" onclick="saveBrewRecipe()">Save Recipe</button>
+          </div>
+          <div id="brew-recipe-photo-container"></div>
+          <div class="form-group" style="margin-top:8px">
+            <label for="brew-recipe-photo-upload">Upload recipe photo</label>
+            <input type="file" id="brew-recipe-photo-upload" accept="image/*" capture="environment">
+          </div>
         </div>
-        <div class="btn-row" style="margin-bottom:12px">
-          <button id="btn-save-recipe" class="btn-save" onclick="saveBrewRecipe()">Save Recipe</button>
-        </div>
-        <div id="brew-recipe-photo-container"></div>
-        <div class="form-group" style="margin-top:8px">
-          <label for="brew-recipe-photo-upload">Upload recipe photo</label>
-          <input type="file" id="brew-recipe-photo-upload" accept="image/*" capture="environment">
-        </div>
-      </div>
+      </details>
 
       <!-- Brew Log (text-based) -->
       <div class="panel">

@@ -1236,7 +1236,7 @@ function ensureGauge(id) {
   return brewGauges[id];
 }
 
-function gaugeBase(min, max, value, fmt, arcColors, needleColor, anchorColor, targetValue) {
+function gaugeBase(min, max, value, fmt, arcColors, needleColor, anchorColor, targetValue, labelFormatter) {
   const series = [
     // Outer decorative ring
     { type: "gauge", startAngle: 180, endAngle: 0, min, max, z: 1,
@@ -1250,7 +1250,7 @@ function gaugeBase(min, max, value, fmt, arcColors, needleColor, anchorColor, ta
       axisLine: { roundCap: true, lineStyle: { width: 14, color: arcColors } },
       axisTick: { distance: 2, length: 4, lineStyle: { color: "#8b949e", width: 1 } },
       splitLine: { distance: 2, length: 10, lineStyle: { color: "#8b949e", width: 1.5 } },
-      axisLabel: { distance: 16, color: "#484f58", fontSize: 11 },
+      axisLabel: { distance: 16, color: "#484f58", fontSize: 11, ...(labelFormatter ? { formatter: labelFormatter } : {}) },
       pointer: {
         length: "65%", width: 5, offsetCenter: [0, "-8%"],
         itemStyle: {
@@ -1333,7 +1333,8 @@ function updateNeedleGauge(b) {
   if (gSG) {
     gSG.setOption(gaugeBase(1.000, 1.060, sgVal, "{value}",
       [[0.25, "#2ea043"], [0.50, "#7ee787"], [0.75, "#d29922"], [1, "#f0883e"]],
-      "#c9d1d9", "rgb(201,209,217)", ogVal));
+      "#c9d1d9", "rgb(201,209,217)", ogVal,
+      v => String(Math.round((v % 1) * 1000)).padStart(3, "0").slice(-2)));
   }
   document.getElementById("gauge-sg-label").textContent =
     sg ? "Dropping toward FG" : "--";
@@ -1921,6 +1922,30 @@ function filterOutliers(data, maxRate) {
 
 /* Auto-populate brew chart with default series */
 let brewChartCleared = {};
+let brewChartRange = {}; // "full" (default) or "24h"
+
+function toggleBrewChartRange() {
+  if (!currentBrewId) return;
+  const cur = brewChartRange[currentBrewId] || "full";
+  brewChartRange[currentBrewId] = cur === "full" ? "24h" : "full";
+  const btn = document.getElementById("btn-brew-chart-range");
+  if (btn) btn.textContent = brewChartRange[currentBrewId] === "24h" ? "Show: Full Brew" : "Show: Last 24h";
+  // Force rebuild with new range
+  const existing = brewCharts[currentBrewId];
+  if (existing) { existing.destroy(); delete brewCharts[currentBrewId]; }
+  brewChartCleared[currentBrewId] = false;
+  // Refetch current brew data to rebuild chart
+  fetch(`/api/brews/${currentBrewId}`).then(r => r.json()).then(b => autoPopulateBrewChart(b, true)).catch(() => {});
+}
+
+function _brewChartStart(brew) {
+  const brewStart = brew.started_at ? new Date(brew.started_at).getTime() / 1000 : (Date.now() / 1000) - 604800;
+  const range = brewChartRange[brew.id] || "full";
+  if (range === "24h") {
+    return Math.max(brewStart, (Date.now() / 1000) - 86400);
+  }
+  return brewStart;
+}
 
 async function autoPopulateBrewChart(brew, forceRebuild) {
   const sessionId = brew.id;
@@ -1934,9 +1959,7 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
   }
   if (forceRebuild && existing) { existing.destroy(); delete brewCharts[sessionId]; }
 
-  // Use brew start date, not relative time — show entire fermentation
-  const brewStart = brew.started_at ? new Date(brew.started_at).getTime() / 1000 : (Date.now() / 1000) - 604800;
-  const start = brewStart;
+  const start = _brewChartStart(brew);
   const limit = 50000;
 
   const tiltId = brew.tilt_device_id;
@@ -1945,7 +1968,6 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
 
   // Need at least one data source (real device or manual readings)
   if (!tiltId && !ctrlId) {
-    // Check if there are manual readings
     const manualCheck = await fetch(`/api/history/${manualId}/temperature?start=${start}&limit=1`).then(r => r.json()).catch(() => []);
     const manualSGCheck = await fetch(`/api/history/${manualId}/specificGravity?start=${start}&limit=1`).then(r => r.json()).catch(() => []);
     if (!manualCheck.length && !manualSGCheck.length) return;
@@ -1956,13 +1978,11 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
     fetches.beerTemp = fetch(`/api/history/${tiltId}/temperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
     fetches.sg = fetch(`/api/history/${tiltId}/specificGravity?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
   } else {
-    // Fall back to manual readings
     fetches.beerTemp = fetch(`/api/history/${manualId}/temperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
     fetches.sg = fetch(`/api/history/${manualId}/specificGravity?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
   }
-  if (ctrlId) {
-    fetches.fridgeTarget = fetch(`/api/history/${ctrlId}/targetTemperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
-  }
+  // Beer target temp (not fridge target) — from session/profile/feedback history
+  fetches.beerTarget = fetch(`/api/brews/${sessionId}/target-history`).then(r => r.json()).catch(() => []);
 
   const keys = Object.keys(fetches);
   const values = await Promise.all(keys.map(k => fetches[k]));
@@ -1985,13 +2005,21 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
       borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false, yAxisID: "y",
     });
   }
-  if (results.fridgeTarget?.length) {
-    datasets.push({
-      label: "Target Temp (\u00b0C)",
-      data: mapPts(results.fridgeTarget),
-      borderColor: "#2ea043",
-      borderWidth: 2, borderDash: [5, 5], pointRadius: 0, fill: false, yAxisID: "y",
-    });
+  if (results.beerTarget?.length) {
+    let pts = mapPts(results.beerTarget);
+    // Filter to chart range
+    if (brewChartRange[sessionId] === "24h") {
+      const cutoff = (Date.now() / 1000 - 86400) * 1000;
+      pts = pts.filter(p => p.x >= cutoff);
+    }
+    if (pts.length) {
+      datasets.push({
+        label: "Target Temp (\u00b0C)",
+        data: pts,
+        borderColor: "#2ea043",
+        borderWidth: 2, borderDash: [5, 5], pointRadius: 0, stepped: "before", fill: false, yAxisID: "y",
+      });
+    }
   }
   if (results.sg?.length) {
     hasSG = true;
@@ -2058,21 +2086,18 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
 /* Refresh brew chart data in-place without rebuilding */
 async function refreshBrewChart(brew, chart) {
   const tiltId = brew.tilt_device_id;
-  const ctrlId = brew.controller_device_id;
   const manualId = `manual-${brew.id}`;
 
-  const brewStart = brew.started_at ? new Date(brew.started_at).getTime() / 1000 : (Date.now() / 1000) - 604800;
+  const start = _brewChartStart(brew);
   const limit = 50000;
   const doFilter = brewFilterEnabled[brew.id];
   const mapPts = (arr) => arr.map(d => ({ x: d.timestamp * 1000, y: d.value }));
 
   const fetches = {};
   const tempSource = tiltId || manualId;
-  fetches.beerTemp = fetch(`/api/history/${tempSource}/temperature?start=${brewStart}&limit=${limit}`).then(r => r.json()).catch(() => []);
-  fetches.sg = fetch(`/api/history/${tempSource}/specificGravity?start=${brewStart}&limit=${limit}`).then(r => r.json()).catch(() => []);
-  if (ctrlId) {
-    fetches.fridgeTarget = fetch(`/api/history/${ctrlId}/targetTemperature?start=${brewStart}&limit=${limit}`).then(r => r.json()).catch(() => []);
-  }
+  fetches.beerTemp = fetch(`/api/history/${tempSource}/temperature?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
+  fetches.sg = fetch(`/api/history/${tempSource}/specificGravity?start=${start}&limit=${limit}`).then(r => r.json()).catch(() => []);
+  fetches.beerTarget = fetch(`/api/brews/${brew.id}/target-history`).then(r => r.json()).catch(() => []);
 
   const keys = Object.keys(fetches);
   const values = await Promise.all(keys.map(k => fetches[k]));
@@ -2086,8 +2111,13 @@ async function refreshBrewChart(brew, chart) {
     if (doFilter) pts = filterOutliers(pts, 2.0);
     dataMap["Actual Temp (\u00b0C)"] = pts;
   }
-  if (results.fridgeTarget?.length) {
-    dataMap["Target Temp (\u00b0C)"] = mapPts(results.fridgeTarget);
+  if (results.beerTarget?.length) {
+    let pts = mapPts(results.beerTarget);
+    if (brewChartRange[brew.id] === "24h") {
+      const cutoff = (Date.now() / 1000 - 86400) * 1000;
+      pts = pts.filter(p => p.x >= cutoff);
+    }
+    dataMap["Target Temp (\u00b0C)"] = pts;
   }
   if (results.sg?.length) {
     let pts = mapPts(results.sg);
@@ -2104,7 +2134,7 @@ async function refreshBrewChart(brew, chart) {
       changed = true;
     }
   }
-  if (changed) chart.update("none"); // "none" = no animation
+  if (changed) chart.update("none");
 }
 
 /* Brew chart (persistent per session) */
@@ -2158,7 +2188,7 @@ let feedbackRangeAll = false;
 function toggleFeedbackRange() {
   feedbackRangeAll = !feedbackRangeAll;
   const btn = document.getElementById("btn-feedback-range");
-  btn.textContent = feedbackRangeAll ? "Show: Entire Brew" : "Show: Last 24 Hours";
+  btn.textContent = feedbackRangeAll ? "Show: Last 24 Hours" : "Show: Entire Brew";
   if (lastFeedbackSession) loadFeedbackChart(lastFeedbackSession, true);
 }
 
@@ -2475,6 +2505,10 @@ function renderProfileDesigner(brew) {
   const profile = brew.temp_profile || {};
   const steps = profile.steps || [];
   profileSteps = JSON.parse(JSON.stringify(steps));  // deep copy for editing
+
+  // Auto-open the accordion if there's an active profile
+  const panel = document.getElementById("profile-panel");
+  if (panel && steps.length) panel.open = true;
 
   // Mark the active step
   if (brew.started_at && profileSteps.length) {
