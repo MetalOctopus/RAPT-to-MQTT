@@ -396,6 +396,7 @@ function renderDevice(dev) {
   document.getElementById("card-gravity").style.display = isTilt ? "" : "none";
   document.getElementById("card-mode").style.display = isTilt ? "none" : "";
   document.querySelectorAll(".rapt-only").forEach(el => el.style.display = isTilt ? "none" : "");
+  document.querySelectorAll(".tilt-only").forEach(el => el.style.display = isTilt ? "" : "none");
 
   // TILT default charts
   document.getElementById("tilt-default-charts").style.display = isTilt ? "block" : "none";
@@ -407,6 +408,18 @@ function renderDevice(dev) {
       : "--";
     document.getElementById("device-current-temp").textContent = tempStr;
     document.getElementById("device-gravity").textContent = fmtG(dev.specificGravity);
+
+    // Signal card (always available)
+    document.getElementById("device-signal").innerHTML = rssiLabel(dev.rssi);
+
+    // Enriched fields (from Ian's Tasty MQTT Scrape v2)
+    if (dev.txPower != null) {
+      document.getElementById("device-tx-power").textContent = dev.txPower + " dBm";
+    } else {
+      document.getElementById("card-tx-power").style.display = "none";
+    }
+    document.getElementById("device-tilt-model").textContent = dev.isProModel ? "Tilt Pro (HD)" : "Tilt Standard";
+    document.getElementById("device-tilt-cal").textContent = dev.calibrated ? "Yes" : "No";
   } else {
     document.getElementById("device-current-temp").textContent = formatTemp(dev.temperature, unit);
     document.getElementById("device-target-temp").textContent = formatTemp(dev.targetTemperature, unit);

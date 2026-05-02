@@ -896,61 +896,228 @@ def backup_tiltpi_flow():
         return jsonify({"error": str(e)}), 500
 
 
+MQTT_SCRAPE_FUNC = r'''msg.topic = "TiltPi";
+var p = msg.payload;
+var color = (p.Color || "Unknown").split(":")[0];
+var uint8 = new Uint8Array(1);
+uint8[0] = p.tx_power;
+msg.payload = JSON.stringify({
+  color: color,
+  beer: (p.Beer && p.Beer[0]) || "",
+  temperature: parseFloat(p.displayTemp || 0),
+  temperature_raw: parseFloat(p.Temp || 0),
+  sg: parseFloat(p.SG || 0),
+  rssi: parseInt(p.rssi || 0),
+  mac: p.mac || "",
+  uuid: p.uuid || "",
+  tx_power: uint8[0],
+  is_pro: !!(p.hd),
+  calibrated: !!(p.actualSGPoints && p.actualSGPoints !== ""),
+  temp_units: p.tempunits || "",
+  ferm_units: p.fermunits || "",
+  timestamp: p.timeStamp || Date.now()
+});
+return msg;'''
+
+TEMP_SG_KEY_FUNC = r'''var p = JSON.parse(msg.payload);
+msg.compare = parseFloat(p.temperature).toFixed(1) + "|" + parseFloat(p.sg).toFixed(4);
+return msg;'''
+
+RSSI_BUCKET_FUNC = r'''var p = JSON.parse(msg.payload);
+var rssi = parseInt(p.rssi || 0);
+var bucket;
+if (rssi >= -40) bucket = 5;
+else if (rssi >= -50) bucket = 4;
+else if (rssi >= -60) bucket = 3;
+else if (rssi >= -70) bucket = 2;
+else bucket = 1;
+msg.compare = bucket;
+return msg;'''
+
+# Fixed node IDs for RAPT2MQTT MQTT additions
+R2M_SCRAPE_ID = "r2m_scrape.001"
+R2M_TSKEY_ID = "r2m_tskey.001"
+R2M_TSRBE_ID = "r2m_tsrbe.001"
+R2M_RSSIFN_ID = "r2m_rssifn.001"
+R2M_RSSIRBE_ID = "r2m_rssirbe.001"
+R2M_BROKER_ID = "r2m_broker.001"
+R2M_MQTTOUT_ID = "r2m_mqttout.001"
+R2M_NODE_IDS = {R2M_SCRAPE_ID, R2M_TSKEY_ID, R2M_TSRBE_ID, R2M_RSSIFN_ID,
+                R2M_RSSIRBE_ID, R2M_BROKER_ID, R2M_MQTTOUT_ID}
+
+
 @app.route("/api/tiltpi/deploy", methods=["POST"])
 def deploy_tiltpi_flow():
-    """Deploy a flow to a TiltPi instance. Supports 'upgraded' or 'stock' flow types."""
+    """Merge MQTT output nodes into the existing TiltPi flow (non-destructive)."""
     data = request.get_json()
     if not data or "host" not in data:
         return jsonify({"error": "Missing 'host' field"}), 400
-    if "flow_type" not in data:
-        return jsonify({"error": "Missing 'flow_type' (upgraded or stock)"}), 400
 
     host = data["host"]
     port = data.get("port", 1880)
-    flow_type = data["flow_type"]
+    flow_type = data.get("flow_type", "upgraded")
     mqtt_host = data.get("mqtt_host", "")
     mqtt_port = data.get("mqtt_port", "1883")
 
-    # Load the appropriate flow template
-    if flow_type == "upgraded":
-        flow_file = os.path.join(TILTPI_FLOW_DIR, "tiltpi-upgraded-flow.json")
-    elif flow_type == "stock":
-        flow_file = os.path.join(TILTPI_FLOW_DIR, "tiltpi-stock-flow.json")
-    else:
-        return jsonify({"error": f"Unknown flow_type: {flow_type}"}), 400
+    if flow_type == "stock":
+        return _remove_r2m_nodes(host, port)
 
-    if not os.path.exists(flow_file):
-        return jsonify({"error": f"Flow file not found: {flow_type}"}), 500
+    # Resolve MQTT broker address
+    if not mqtt_host:
+        cfg = load_config()
+        mqtt_host = cfg.get("mqtt_host", "")
+        mqtt_port = str(cfg.get("mqtt_port", 1883))
+    if not mqtt_host:
+        return jsonify({"error": "MQTT host required. Configure it in MQTT Config first."}), 400
 
     try:
-        with open(flow_file) as f:
-            flow_data = f.read()
+        # Fetch the current flow from TiltPi
+        r = requests.get(f"http://{host}:{port}/flows", timeout=10)
+        if r.status_code != 200:
+            return jsonify({"error": f"Cannot read flows: HTTP {r.status_code}"}), 502
+        flow = r.json()
 
-        # For upgraded flow, substitute MQTT broker placeholders
-        if flow_type == "upgraded":
-            if not mqtt_host:
-                # Use our own MQTT config
-                cfg = load_config()
-                mqtt_host = cfg.get("mqtt_host", "")
-                mqtt_port = str(cfg.get("mqtt_port", 1883))
-            if not mqtt_host:
-                return jsonify({"error": "MQTT host required for upgraded flow. Configure it in MQTT Config or pass mqtt_host."}), 400
-            flow_data = flow_data.replace("%%MQTT_HOST%%", mqtt_host)
-            flow_data = flow_data.replace("%%MQTT_PORT%%", str(mqtt_port))
+        # Find the main tab (the one with check/change/inject nodes)
+        tab_id = None
+        for n in flow:
+            if n.get("type") == "tab":
+                tab_id = n["id"]
+                break
+        if not tab_id:
+            return jsonify({"error": "No flow tab found on TiltPi"}), 500
 
-        flow_json = json.loads(flow_data)
+        # Find a check node to wire our scrape function after
+        # Check nodes feed into ui_template nodes — we want to tap the same data
+        check_ids = [n["id"] for n in flow if n.get("type") == "function"
+                     and n.get("name", "").lower().startswith("check")
+                     and n.get("z") == tab_id]
+        if not check_ids:
+            return jsonify({"error": "No check function nodes found — is this a TiltPi flow?"}), 500
 
-        # Deploy via Node-RED API (full flow replacement)
+        # Find what the first check node wires to, to locate ui_template nodes
+        # We tap into the same wire as the check→ui_template chain
+        source_id = check_ids[0]
+
+        # Remove any existing R2M nodes (idempotent re-deploy)
+        flow = [n for n in flow if n.get("id") not in R2M_NODE_IDS]
+
+        # Find existing wires from source check node
+        source_node = next(n for n in flow if n.get("id") == source_id)
+        existing_wires = source_node.get("wires", [[]])
+
+        # Add our scrape function to the first wire group of the check node
+        if existing_wires and isinstance(existing_wires[0], list):
+            if R2M_SCRAPE_ID not in existing_wires[0]:
+                existing_wires[0].append(R2M_SCRAPE_ID)
+        else:
+            source_node["wires"] = [[R2M_SCRAPE_ID]]
+
+        # Calculate positions (place our nodes to the right of existing ones)
+        max_x = max((n.get("x", 0) for n in flow if n.get("z") == tab_id), default=500)
+        base_x = max_x + 200
+        base_y = 600
+
+        # Build our nodes
+        r2m_nodes = [
+            # MQTT broker config
+            {"id": R2M_BROKER_ID, "type": "mqtt-broker", "z": "",
+             "broker": mqtt_host, "port": mqtt_port,
+             "clientid": "rapt2mqtt-tiltpi", "usetls": False,
+             "compatmode": True, "keepalive": "60", "cleansession": True},
+            # Scrape function (Ian's Tasty MQTT Scrape v2)
+            {"id": R2M_SCRAPE_ID, "type": "function", "z": tab_id,
+             "name": "RAPT2MQTT MQTT Scrape", "func": MQTT_SCRAPE_FUNC,
+             "outputs": 1, "noerr": 0,
+             "x": base_x, "y": base_y,
+             "wires": [[R2M_TSKEY_ID, R2M_RSSIFN_ID]]},
+            # Temp/SG change key
+            {"id": R2M_TSKEY_ID, "type": "function", "z": tab_id,
+             "name": "R2M Temp/SG Key", "func": TEMP_SG_KEY_FUNC,
+             "outputs": 1, "noerr": 0,
+             "x": base_x + 200, "y": base_y - 40,
+             "wires": [[R2M_TSRBE_ID]]},
+            # Temp/SG RBE (only publish on change)
+            {"id": R2M_TSRBE_ID, "type": "rbe", "z": tab_id,
+             "name": "R2M Temp/SG changed", "func": "rbe",
+             "gap": "", "start": "", "inout": "out", "property": "compare",
+             "x": base_x + 400, "y": base_y - 40,
+             "wires": [[R2M_MQTTOUT_ID]]},
+            # RSSI bucket function
+            {"id": R2M_RSSIFN_ID, "type": "function", "z": tab_id,
+             "name": "R2M RSSI Bucket", "func": RSSI_BUCKET_FUNC,
+             "outputs": 1, "noerr": 0,
+             "x": base_x + 200, "y": base_y + 40,
+             "wires": [[R2M_RSSIRBE_ID]]},
+            # RSSI RBE
+            {"id": R2M_RSSIRBE_ID, "type": "rbe", "z": tab_id,
+             "name": "R2M RSSI changed", "func": "rbe",
+             "gap": "", "start": "", "inout": "out", "property": "compare",
+             "x": base_x + 400, "y": base_y + 40,
+             "wires": [[R2M_MQTTOUT_ID]]},
+            # MQTT output
+            {"id": R2M_MQTTOUT_ID, "type": "mqtt out", "z": tab_id,
+             "name": "RAPT2MQTT", "topic": "TiltPi",
+             "qos": "", "retain": "",
+             "broker": R2M_BROKER_ID,
+             "x": base_x + 600, "y": base_y,
+             "wires": []},
+        ]
+
+        flow.extend(r2m_nodes)
+
+        # Deploy the merged flow
         r = requests.post(
             f"http://{host}:{port}/flows",
-            json=flow_json,
+            json=flow,
             headers={"Content-Type": "application/json", "Node-RED-Deployment-Type": "full"},
             timeout=30,
         )
 
-        if r.status_code == 204 or r.status_code == 200:
-            logger.info(f"TiltPi flow deployed ({flow_type}) to {host}:{port}")
-            return jsonify({"status": "ok", "flow_type": flow_type, "node_count": len(flow_json)})
+        if r.status_code in (200, 204):
+            logger.info(f"TiltPi MQTT nodes merged into flow on {host}:{port} ({len(flow)} total nodes)")
+            return jsonify({"status": "ok", "flow_type": "upgraded", "node_count": len(flow),
+                            "added_nodes": len(r2m_nodes)})
+        else:
+            return jsonify({"error": f"Deploy failed: HTTP {r.status_code} - {r.text[:200]}"}), 502
+
+    except requests.exceptions.ConnectionError:
+        return jsonify({"error": f"Cannot connect to {host}:{port}"}), 502
+    except Exception as e:
+        logger.error(f"TiltPi deploy error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+def _remove_r2m_nodes(host, port):
+    """Remove RAPT2MQTT nodes from TiltPi flow (revert to stock)."""
+    try:
+        r = requests.get(f"http://{host}:{port}/flows", timeout=10)
+        if r.status_code != 200:
+            return jsonify({"error": f"Cannot read flows: HTTP {r.status_code}"}), 502
+        flow = r.json()
+
+        removed = 0
+        # Remove R2M nodes
+        original_len = len(flow)
+        flow = [n for n in flow if n.get("id") not in R2M_NODE_IDS]
+        removed = original_len - len(flow)
+
+        # Remove R2M_SCRAPE_ID from any wire lists
+        for n in flow:
+            for wg in n.get("wires", []):
+                if isinstance(wg, list) and R2M_SCRAPE_ID in wg:
+                    wg.remove(R2M_SCRAPE_ID)
+
+        r = requests.post(
+            f"http://{host}:{port}/flows",
+            json=flow,
+            headers={"Content-Type": "application/json", "Node-RED-Deployment-Type": "full"},
+            timeout=30,
+        )
+
+        if r.status_code in (200, 204):
+            logger.info(f"Removed {removed} RAPT2MQTT nodes from TiltPi on {host}:{port}")
+            return jsonify({"status": "ok", "flow_type": "stock", "node_count": len(flow),
+                            "removed_nodes": removed})
         else:
             return jsonify({"error": f"Deploy failed: HTTP {r.status_code} - {r.text[:200]}"}), 502
 
