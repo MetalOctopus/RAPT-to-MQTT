@@ -827,6 +827,40 @@ button:disabled {
   text-align: right;
 }
 
+/* --- Login overlay --- */
+.login-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #0d1117;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-box {
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 12px;
+  padding: 40px;
+  width: 90%;
+  max-width: 360px;
+  text-align: center;
+}
+.login-box h1 {
+  margin: 12px 0 24px;
+  color: #e6edf3;
+  font-size: 1.4em;
+}
+.login-box .form-group {
+  text-align: left;
+  margin-bottom: 12px;
+}
+.login-error {
+  color: #f85149;
+  font-size: 0.85em;
+  margin: 8px 0;
+}
+
 /* --- Toast --- */
 .toast {
   position: fixed;

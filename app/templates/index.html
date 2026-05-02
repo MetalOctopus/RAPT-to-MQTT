@@ -29,7 +29,7 @@
 
     <div class="nav-section">
       <div class="nav-label">Brews</div>
-      <a class="nav-item nav-newbrew" data-page="newbrew" href="#">+ New Brew</a>
+      <a class="nav-item nav-newbrew brewmaster-only" data-page="newbrew" href="#">+ New Brew</a>
       <div id="brew-nav-list" class="device-list">
         <!-- Active brews injected here -->
       </div>
@@ -72,6 +72,11 @@
     <div class="nav-section">
       <div class="nav-label">Support RAPT2MQTT</div>
       <a class="nav-item" data-page="support" href="#">Support</a>
+    </div>
+
+    <div id="auth-user-info" class="nav-section" style="display:none;margin-top:auto;border-top:1px solid #21262d;padding-top:8px">
+      <div class="nav-label" id="auth-role-display"></div>
+      <a class="nav-item" href="#" id="btn-logout">Log Out</a>
     </div>
   </nav>
 
@@ -130,16 +135,65 @@
           </div>
         </div>
         <div class="btn-row">
-          <button id="btn-save" class="btn-save">Save Configuration</button>
+          <button id="btn-save" class="btn-save brewmaster-only">Save Configuration</button>
         </div>
       </div>
 
       <div class="panel">
         <div class="controls">
           <h2 style="margin-bottom:0">Bridge</h2>
-          <button id="btn-start" class="btn-start">Start</button>
-          <button id="btn-stop" class="btn-stop" disabled>Stop</button>
+          <button id="btn-start" class="btn-start brewmaster-only">Start</button>
+          <button id="btn-stop" class="btn-stop brewmaster-only" disabled>Stop</button>
         </div>
+      </div>
+
+      <!-- Auth Config (brewmaster-only) -->
+      <div id="auth-config-panel" class="panel" style="display:none">
+        <h2>Authentication</h2>
+        <p class="help-text" style="margin-bottom:12px">Share your dashboard with brew buddies. Guests get a read-only view. Off by default.</p>
+        <div class="form-grid">
+          <div class="form-group checkbox-group full-width">
+            <input type="checkbox" id="auth_enabled">
+            <label for="auth_enabled">Require login to access RAPT2MQTT</label>
+          </div>
+        </div>
+        <div id="auth-fields" style="display:none">
+          <h3 style="color:#e6edf3;font-size:0.9em;margin:16px 0 8px">Brewmaster (full control)</h3>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="bm_username">Username</label>
+              <input type="text" id="bm_username" value="admin" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label for="bm_password">Password</label>
+              <input type="password" id="bm_password" placeholder="Set password" autocomplete="new-password">
+            </div>
+          </div>
+          <h3 style="color:#e6edf3;font-size:0.9em;margin:16px 0 8px">Guest access (read-only)</h3>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label for="guest_mode">How guests log in</label>
+              <select id="guest_mode">
+                <option value="button">"View as Guest" button — no credentials needed</option>
+                <option value="password">Require guest username and password</option>
+              </select>
+            </div>
+          </div>
+          <div id="guest-password-fields" class="form-grid" style="display:none">
+            <div class="form-group">
+              <label for="guest_username_cfg">Guest Username</label>
+              <input type="text" id="guest_username_cfg" value="guest" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label for="guest_password_cfg">Guest Password</label>
+              <input type="password" id="guest_password_cfg" placeholder="Set guest password" autocomplete="new-password">
+            </div>
+          </div>
+        </div>
+        <div class="btn-row" style="margin-top:12px">
+          <button id="btn-save-auth" class="btn-save">Save Auth Settings</button>
+        </div>
+        <p class="help-text" style="margin-top:12px">Locked out? Edit <code>config.json</code> on disk and set <code>"auth_enabled": false</code>.</p>
       </div>
 
       <div class="panel">
@@ -254,7 +308,7 @@
           </div>
         </div>
         <div class="btn-row">
-          <button id="btn-start-brew" class="btn-save">Start Brew</button>
+          <button id="btn-start-brew" class="btn-save brewmaster-only">Start Brew</button>
         </div>
       </div>
     </div>
@@ -371,13 +425,13 @@
             <label for="manual-temp">Temp (°C)</label>
             <input type="number" id="manual-temp" step="0.1" placeholder="20.0">
           </div>
-          <button class="btn-save" onclick="submitManualReading()" style="white-space:nowrap">Log Reading</button>
+          <button class="btn-save brewmaster-only" onclick="submitManualReading()" style="white-space:nowrap">Log Reading</button>
         </div>
         <p class="help-text" style="margin-top:6px">No connected hydrometer or thermometer? Enter your readings manually from a traditional hydrometer, refractometer, or thermometer.</p>
       </div>
 
       <div class="brew-actions-bar" id="brew-actions-bar">
-        <button id="btn-cold-crash" class="btn-cold-crash brew-needs-ctrl" onclick="coldCrash()" disabled>Cold Crash</button>
+        <button id="btn-cold-crash" class="btn-cold-crash brew-needs-ctrl brewmaster-only" onclick="coldCrash()" disabled>Cold Crash</button>
         <span class="help-text brew-no-ctrl-hint" style="display:none">Assign a temperature controller to enable cold crash</span>
       </div>
 
@@ -486,8 +540,8 @@
         <div class="accordion-body">
         <p id="feedback-explanation" class="help-text" style="margin:4px 0 12px 0;line-height:1.6"></p>
         <div class="controls" style="margin-bottom:12px">
-          <button id="btn-feedback-start" class="btn-save">Enable</button>
-          <button id="btn-feedback-stop" class="btn-stop" disabled>Disable</button>
+          <button id="btn-feedback-start" class="btn-save brewmaster-only">Enable</button>
+          <button id="btn-feedback-stop" class="btn-stop brewmaster-only" disabled>Disable</button>
         </div>
         <div id="feedback-live-status" style="display:none">
           <div class="device-grid" style="margin-bottom:12px">
@@ -608,15 +662,15 @@
       <div class="panel">
         <h2>Brew Log</h2>
         <div class="btn-row" style="margin-bottom:12px">
-          <button class="btn-save" onclick="openAddEventModal()">Add Event</button>
+          <button class="btn-save brewmaster-only" onclick="openAddEventModal()">Add Event</button>
         </div>
         <div id="brew-events-list" class="brew-log-text"></div>
       </div>
 
       <div class="panel" id="brew-actions-panel">
         <div class="btn-row">
-          <button id="btn-complete-brew" class="btn-save">Complete Brew</button>
-          <button id="btn-cancel-brew" class="btn-stop">Cancel Brew</button>
+          <button id="btn-complete-brew" class="btn-save brewmaster-only">Complete Brew</button>
+          <button id="btn-cancel-brew" class="btn-stop brewmaster-only">Cancel Brew</button>
         </div>
       </div>
     </div>
@@ -2052,6 +2106,39 @@
   </main>
 
   <div id="toast" class="toast"></div>
+
+  <!-- Login overlay (hidden unless auth enabled + not logged in) -->
+  <div id="login-screen" class="login-overlay" style="display:none">
+    <div class="login-box">
+      <svg viewBox="0 0 24 22" fill="currentColor" xmlns="http://www.w3.org/2000/svg" width="48" height="44">
+        <rect x="3" y="9" width="12" height="12" rx="1.5" fill="#e6a817"/>
+        <ellipse cx="5" cy="9.2" rx="2.2" ry="1.6" fill="#fff" stroke="#8b949e" stroke-width="0.4"/>
+        <ellipse cx="9" cy="8.5" rx="2.8" ry="2" fill="#fff" stroke="#8b949e" stroke-width="0.4"/>
+        <ellipse cx="13" cy="9.2" rx="2.2" ry="1.6" fill="#fff" stroke="#8b949e" stroke-width="0.4"/>
+        <path d="M15 12h2a2 2 0 0 1 2 2v1.5a2 2 0 0 1-2 2h-2" fill="none" stroke="#8b949e" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="9" cy="3" r="1" fill="#58a6ff"/>
+        <path d="M6.2 4.8a4 4 0 0 1 5.6 0" fill="none" stroke="#58a6ff" stroke-width="1.2" stroke-linecap="round"/>
+        <path d="M4 3a7 7 0 0 1 10 0" fill="none" stroke="#58a6ff" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      <h1>RAPT2MQTT</h1>
+      <div id="login-form">
+        <div class="form-group">
+          <label for="login-username">Username</label>
+          <input type="text" id="login-username" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" autocomplete="current-password">
+        </div>
+        <div id="login-error" class="login-error" style="display:none"></div>
+        <button id="btn-login" class="btn-save" style="width:100%;margin-top:8px">Log In</button>
+      </div>
+      <div id="guest-button-row" style="display:none">
+        <div style="border-top:1px solid #30363d;margin:16px 0"></div>
+        <button id="btn-guest-login" class="btn-save" style="width:100%;background:#30363d;border-color:#484f58">View as Guest (Read-Only)</button>
+      </div>
+    </div>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>

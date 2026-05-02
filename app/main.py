@@ -8,11 +8,13 @@ import threading
 import socket
 import requests
 
-from flask import Flask, render_template, request, jsonify, Response, send_from_directory
+from flask import Flask, render_template, request, jsonify, Response, send_from_directory, session
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from app.config import (
-    load_config, save_config, is_configured, mask_secret, LOG_DIR, CONFIG_DIR
+    load_config, save_config, is_configured, mask_secret, get_or_create_secret_key,
+    LOG_DIR, CONFIG_DIR
 )
 from app.rapt_service import RaptBridge
 from app.log_handler import WebLogHandler
@@ -44,7 +46,20 @@ logger.addHandler(file_handler)
 
 # --- App setup ---
 app = Flask(__name__)
+app.secret_key = get_or_create_secret_key()
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
 config = load_config()
+
+# Hash env var password on first boot if provided
+_env_bm_pw = os.environ.get("BREWMASTER_PASSWORD")
+if _env_bm_pw and not config.get("brewmaster_password_hash"):
+    config["brewmaster_password_hash"] = generate_password_hash(_env_bm_pw)
+    save_config(config)
+_env_guest_pw = os.environ.get("GUEST_PASSWORD")
+if _env_guest_pw and not config.get("guest_password_hash"):
+    config["guest_password_hash"] = generate_password_hash(_env_guest_pw)
+    save_config(config)
 history = HistoryStore()
 bridge = RaptBridge(config=config, logger=logger, history=history)
 brew = BrewSession(history=history, bridge=bridge, logger=logger)
@@ -90,6 +105,132 @@ _log_db_stats()
 # --- Version ---
 _version_file = os.path.join(os.path.dirname(__file__), "VERSION")
 APP_VERSION = open(_version_file).read().strip() if os.path.exists(_version_file) else "dev"
+
+
+# --- Authentication ---
+
+# Public paths that never require auth
+_PUBLIC_PATHS = frozenset([
+    "/", "/api/version", "/api/auth/status", "/api/auth/login",
+    "/api/auth/guest", "/api/auth/logout",
+])
+
+
+@app.before_request
+def check_auth():
+    cfg = load_config()
+    if not cfg.get("auth_enabled", False):
+        return  # auth off — everything passes
+
+    path = request.path
+    if path.startswith("/static/") or path in _PUBLIC_PATHS:
+        return
+
+    role = session.get("role")
+    if not role:
+        return jsonify({"error": "Login required"}), 401
+
+    # Guests get read-only: any write method is blocked
+    if role == "guest" and request.method in ("POST", "PUT", "DELETE", "PATCH"):
+        # Allow logout for guests
+        if path == "/api/auth/logout":
+            return
+        return jsonify({"error": "Read-only access"}), 403
+
+
+@app.route("/api/auth/status")
+def auth_status():
+    cfg = load_config()
+    return jsonify({
+        "auth_enabled": cfg.get("auth_enabled", False),
+        "role": session.get("role"),
+        "username": session.get("username"),
+        "guest_mode": cfg.get("guest_mode", "button"),
+    })
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def auth_login():
+    cfg = load_config()
+    if not cfg.get("auth_enabled", False):
+        return jsonify({"error": "Auth not enabled"}), 400
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid request"}), 400
+    username = data.get("username", "").strip()
+    password = data.get("password", "")
+
+    # Check brewmaster
+    if (username == cfg.get("brewmaster_username", "admin")
+            and cfg.get("brewmaster_password_hash")
+            and check_password_hash(cfg["brewmaster_password_hash"], password)):
+        session["role"] = "brewmaster"
+        session["username"] = username
+        return jsonify({"role": "brewmaster", "username": username})
+
+    # Check guest (only if guest_mode is password)
+    if (cfg.get("guest_mode") == "password"
+            and username == cfg.get("guest_username", "guest")
+            and cfg.get("guest_password_hash")
+            and check_password_hash(cfg["guest_password_hash"], password)):
+        session["role"] = "guest"
+        session["username"] = username
+        return jsonify({"role": "guest", "username": username})
+
+    return jsonify({"error": "Invalid credentials"}), 401
+
+
+@app.route("/api/auth/guest", methods=["POST"])
+def auth_guest():
+    cfg = load_config()
+    if not cfg.get("auth_enabled", False):
+        return jsonify({"error": "Auth not enabled"}), 400
+    if cfg.get("guest_mode") != "button":
+        return jsonify({"error": "Guest button not enabled"}), 400
+    session["role"] = "guest"
+    session["username"] = "Guest"
+    return jsonify({"role": "guest", "username": "Guest"})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def auth_logout():
+    session.clear()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/auth/settings", methods=["POST"])
+def auth_settings():
+    # Only brewmaster (or auth-disabled) can change auth settings
+    cfg = load_config()
+    if cfg.get("auth_enabled") and session.get("role") != "brewmaster":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid request"}), 400
+
+    enabling = data.get("auth_enabled", False)
+    bm_password = data.get("brewmaster_password", "")
+    guest_password = data.get("guest_password", "")
+
+    # Must set a brewmaster password when enabling
+    if enabling and not bm_password and not cfg.get("brewmaster_password_hash"):
+        return jsonify({"error": "Set a Brewmaster password before enabling auth"}), 400
+
+    cfg["auth_enabled"] = enabling
+    cfg["brewmaster_username"] = data.get("brewmaster_username", "admin").strip() or "admin"
+    cfg["guest_mode"] = data.get("guest_mode", "button")
+    cfg["guest_username"] = data.get("guest_username", "guest").strip() or "guest"
+
+    if bm_password:
+        cfg["brewmaster_password_hash"] = generate_password_hash(bm_password)
+    if guest_password:
+        cfg["guest_password_hash"] = generate_password_hash(guest_password)
+
+    save_config(cfg)
+    logger.info(f"Auth settings updated: enabled={enabling}")
+    return jsonify({"status": "ok"})
 
 
 @app.route("/")

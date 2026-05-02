@@ -1,11 +1,13 @@
 import os
 import json
+import secrets
 import threading
 
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/config")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 TOKEN_FILE = os.path.join(CONFIG_DIR, "token.txt")
 LOG_DIR = os.path.join(CONFIG_DIR, "logs")
+SECRET_KEY_FILE = os.path.join(CONFIG_DIR, ".flask_secret")
 
 DEFAULTS = {
     "mqtt_host": "",
@@ -17,6 +19,12 @@ DEFAULTS = {
     "poll_interval": 300,
     "auto_start": True,
     "gravity_unit": "sg",
+    "auth_enabled": False,
+    "brewmaster_username": "admin",
+    "brewmaster_password_hash": "",
+    "guest_mode": "button",
+    "guest_username": "guest",
+    "guest_password_hash": "",
 }
 
 # Environment variable name -> config key (or tuple with type converter)
@@ -29,6 +37,9 @@ ENV_MAP = {
     "RAPT_SECRET": "rapt_secret",
     "POLL_INTERVAL": ("poll_interval", int),
     "AUTO_START": ("auto_start", lambda v: v.lower() in ("true", "1", "yes")),
+    "AUTH_ENABLED": ("auth_enabled", lambda v: v.lower() in ("true", "1", "yes")),
+    "BREWMASTER_USERNAME": "brewmaster_username",
+    "GUEST_MODE": "guest_mode",
 }
 
 _lock = threading.Lock()
@@ -88,3 +99,20 @@ def mask_secret(secret):
     if not secret or len(secret) <= 4:
         return "****"
     return "*" * (len(secret) - 4) + secret[-4:]
+
+
+def get_or_create_secret_key():
+    """Load or generate a persistent Flask secret key.
+
+    Persisted to CONFIG_DIR so sessions survive container restarts.
+    """
+    _ensure_dirs()
+    if os.path.exists(SECRET_KEY_FILE):
+        with open(SECRET_KEY_FILE, "r") as f:
+            key = f.read().strip()
+            if key:
+                return key
+    key = secrets.token_hex(32)
+    with open(SECRET_KEY_FILE, "w") as f:
+        f.write(key)
+    return key

@@ -11,6 +11,11 @@ let currentPage = "config";
 let currentDeviceId = null;
 let currentBrewId = null;
 
+/* Auth state */
+let authEnabled = false;
+let currentRole = null;   // "brewmaster", "guest", or null
+let currentUsername = null;
+
 /* Chart instances (persisted across navigation) */
 let dashboardChart = null;
 let dashboardSeries = [];
@@ -3572,29 +3577,225 @@ async function restoreTiltPiBackup(filename) {
 }
 
 
-/* --- Init --- */
-loadConfig();
-checkStatus();
-initConsole();
-loadDevices();
-loadBrewNav();
+/* --- Auth & Init --- */
 
-// Load version into About page
-fetch("/api/version").then(r => r.json()).then(d => {
-  const el = document.getElementById("app-version");
-  if (el) el.textContent = d.version;
-}).catch(() => {});
+function showLoginScreen() {
+  const screen = document.getElementById("login-screen");
+  if (!screen) return;
+  screen.style.display = "";
+  fetch("/api/auth/status").then(r => r.json()).then(auth => {
+    if (auth.guest_mode === "button") {
+      document.getElementById("guest-button-row").style.display = "";
+    } else {
+      document.getElementById("guest-button-row").style.display = "none";
+    }
+  }).catch(() => {});
+}
 
-// Navigate to latest active brew on startup (or stay on config if none)
-(async () => {
+function hideLoginScreen() {
+  const screen = document.getElementById("login-screen");
+  if (screen) screen.style.display = "none";
+}
+
+function applyRoleUI() {
+  const isGuest = currentRole === "guest";
+
+  // Hide write-action elements for guests
+  document.querySelectorAll(".brewmaster-only").forEach(el => {
+    el.style.display = isGuest ? "none" : "";
+  });
+
+  // Hide config/tiltpi nav for guests
+  document.querySelectorAll('[data-page="config"], [data-page="tiltpi"]').forEach(el => {
+    if (isGuest) el.style.display = "none";
+  });
+
+  // Show auth config panel for brewmaster
+  const authPanel = document.getElementById("auth-config-panel");
+  if (authPanel) authPanel.style.display = (currentRole === "brewmaster") ? "" : "none";
+
+  // Sidebar user info
+  const userInfo = document.getElementById("auth-user-info");
+  if (userInfo) {
+    userInfo.style.display = authEnabled ? "" : "none";
+    const roleDisplay = document.getElementById("auth-role-display");
+    if (roleDisplay) roleDisplay.textContent = (currentUsername || currentRole || "").replace(/^./, c => c.toUpperCase());
+  }
+}
+
+async function doAppInit() {
+  loadConfig();
+  checkStatus();
+  initConsole();
+  loadDevices();
+  loadBrewNav();
+  applyRoleUI();
+  loadAuthConfig();
+
+  fetch("/api/version").then(r => r.json()).then(d => {
+    const el = document.getElementById("app-version");
+    if (el) el.textContent = d.version;
+  }).catch(() => {});
+
+  // Navigate to latest active brew on startup (or stay on config if none)
   try {
     const brews = await (await fetch("/api/brews")).json();
     if (brews.length) {
-      // Sort by started_at descending, show most recent
       const latest = brews.sort((a, b) => (b.started_at || "").localeCompare(a.started_at || ""))[0];
       showPage("brew-detail", latest.id);
     }
   } catch (e) {}
+}
+
+// Login button
+document.getElementById("btn-login").addEventListener("click", async () => {
+  const username = document.getElementById("login-username").value;
+  const password = document.getElementById("login-password").value;
+  const errEl = document.getElementById("login-error");
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({username, password}),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      currentRole = data.role;
+      currentUsername = data.username;
+      hideLoginScreen();
+      doAppInit();
+    } else {
+      errEl.textContent = "Invalid credentials";
+      errEl.style.display = "";
+    }
+  } catch (e) {
+    errEl.textContent = "Connection error";
+    errEl.style.display = "";
+  }
+});
+
+// Enter key on password field
+document.getElementById("login-password").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("btn-login").click();
+});
+
+// Guest button
+document.getElementById("btn-guest-login").addEventListener("click", async () => {
+  try {
+    const res = await fetch("/api/auth/guest", {method: "POST"});
+    if (res.ok) {
+      currentRole = "guest";
+      currentUsername = "Guest";
+      hideLoginScreen();
+      doAppInit();
+    }
+  } catch (e) {}
+});
+
+// Logout
+document.getElementById("btn-logout").addEventListener("click", async (e) => {
+  e.preventDefault();
+  await fetch("/api/auth/logout", {method: "POST"});
+  currentRole = null;
+  currentUsername = null;
+  showLoginScreen();
+});
+
+// Auth config panel logic
+function loadAuthConfig() {
+  fetch("/api/auth/status").then(r => r.json()).then(auth => {
+    const chk = document.getElementById("auth_enabled");
+    if (chk) chk.checked = auth.auth_enabled;
+    const fields = document.getElementById("auth-fields");
+    if (fields) fields.style.display = auth.auth_enabled ? "" : "none";
+    const gm = document.getElementById("guest_mode");
+    if (gm) gm.value = auth.guest_mode || "button";
+    toggleGuestFields();
+  }).catch(() => {});
+
+  // Load usernames from config (only visible to brewmaster)
+  if (currentRole === "brewmaster") {
+    fetch("/api/config").then(r => r.json()).then(cfg => {
+      const bm = document.getElementById("bm_username");
+      if (bm && cfg.brewmaster_username) bm.value = cfg.brewmaster_username;
+      const gu = document.getElementById("guest_username_cfg");
+      if (gu && cfg.guest_username) gu.value = cfg.guest_username;
+    }).catch(() => {});
+  }
+}
+
+function toggleGuestFields() {
+  const mode = document.getElementById("guest_mode");
+  const fields = document.getElementById("guest-password-fields");
+  if (mode && fields) fields.style.display = mode.value === "password" ? "" : "none";
+}
+
+document.getElementById("auth_enabled")?.addEventListener("change", function() {
+  const fields = document.getElementById("auth-fields");
+  if (fields) fields.style.display = this.checked ? "" : "none";
+});
+document.getElementById("guest_mode")?.addEventListener("change", toggleGuestFields);
+
+document.getElementById("btn-save-auth")?.addEventListener("click", async () => {
+  const data = {
+    auth_enabled: document.getElementById("auth_enabled").checked,
+    brewmaster_username: document.getElementById("bm_username").value,
+    brewmaster_password: document.getElementById("bm_password").value,
+    guest_mode: document.getElementById("guest_mode").value,
+    guest_username: document.getElementById("guest_username_cfg").value,
+    guest_password: document.getElementById("guest_password_cfg").value,
+  };
+  try {
+    const res = await fetch("/api/auth/settings", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (res.ok) {
+      showToast("Auth settings saved");
+      authEnabled = data.auth_enabled;
+      // Clear password fields after save
+      document.getElementById("bm_password").value = "";
+      document.getElementById("guest_password_cfg").value = "";
+      applyRoleUI();
+    } else {
+      showToast(result.error || "Save failed", "error");
+    }
+  } catch (e) {
+    showToast("Save error", "error");
+  }
+});
+
+// Intercept 401s globally (session expired)
+const _origFetch = window.fetch;
+window.fetch = async function(...args) {
+  const res = await _origFetch.apply(this, args);
+  if (res.status === 401 && authEnabled && !String(args[0]).includes("/api/auth/")) {
+    currentRole = null;
+    showLoginScreen();
+  }
+  return res;
+};
+
+// Boot: check auth status, then init or show login
+(async () => {
+  try {
+    const res = await _origFetch("/api/auth/status");
+    const auth = await res.json();
+    authEnabled = auth.auth_enabled;
+    currentRole = auth.role;
+    currentUsername = auth.username;
+  } catch (e) {
+    authEnabled = false;
+    currentRole = "brewmaster";
+  }
+
+  if (authEnabled && !currentRole) {
+    showLoginScreen();
+  } else {
+    doAppInit();
+  }
 })();
 
 /* ========== Coopers DIY Recipes ========== */
