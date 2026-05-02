@@ -3793,7 +3793,7 @@ window.fetch = async function(...args) {
     const res = await _origFetch("/api/auth/status");
     const auth = await res.json();
     authEnabled = auth.auth_enabled;
-    currentRole = auth.role;
+    currentRole = auth.auth_enabled ? auth.role : "brewmaster";
     currentUsername = auth.username;
   } catch (e) {
     authEnabled = false;
