@@ -241,7 +241,7 @@ body {
   justify-content: center;
   z-index: 1000;
 }
-.modal-content {
+.modal-content, .modal-box {
   background: #161b22;
   border: 1px solid #30363d;
   border-radius: 10px;
@@ -1181,6 +1181,22 @@ code {
   padding: 8px;
   margin-bottom: 12px;
   min-height: 40px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.profile-timeline svg { cursor: crosshair; }
+.profile-timeline .profile-step-dot { cursor: grab; }
+.profile-timeline .profile-step-dot:active { cursor: grabbing; }
+.profile-timeline .profile-drag-label {
+  pointer-events: none;
+  font-size: 10px;
+  font-weight: 600;
+  fill: #f0883e;
+}
+.profile-timeline .profile-click-hint {
+  pointer-events: none;
+  font-size: 9px;
+  fill: #8b949e;
 }
 .profile-steps-table { display: flex; flex-direction: column; gap: 2px; }
 .profile-step-row {
@@ -2062,3 +2078,36 @@ code {
   color: #8b949e; font-size: 1.5rem; cursor: pointer; line-height: 1; z-index: 1;
 }
 .recipe-modal-close:hover { color: #c9d1d9; }
+
+/* --- Brew Again button --- */
+.btn-brew-again {
+  background: #1a3a1a;
+  border-color: #2ea043;
+  color: #2ea043;
+  font-weight: 600;
+}
+.btn-brew-again:hover {
+  background: #238636;
+  color: #fff;
+}
+
+/* --- Batch badge in legendary tiles --- */
+.legendary-tile .badge-sm {
+  font-size: 0.72em;
+  letter-spacing: 0.3px;
+}
+
+/* --- Brew Again modal overlay dismiss --- */
+#brew-again-modal .modal-content {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* --- Lineage links --- */
+#brew-lineage-links a {
+  color: #58a6ff;
+  text-decoration: none;
+}
+#brew-lineage-links a:hover {
+  text-decoration: underline;
+}

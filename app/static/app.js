@@ -1028,6 +1028,26 @@ function renderBrewDetail(b) {
     statusBadge.className = "badge offline";
   }
 
+  // Batch badge
+  const batchBadge = document.getElementById("brew-batch-badge");
+  if (b.batch_number) {
+    batchBadge.textContent = "Batch #" + b.batch_number;
+    batchBadge.style.display = "";
+    batchBadge.style.background = "rgba(230,168,23,0.15)";
+    batchBadge.style.color = "#e6a817";
+  } else {
+    batchBadge.style.display = "none";
+  }
+
+  // Brew Again button (show for completed brews)
+  const brewAgainWrapper = document.getElementById("brew-again-wrapper");
+  if (brewAgainWrapper) {
+    brewAgainWrapper.style.display = (b.status === "completed") ? "" : "none";
+  }
+
+  // Lineage links
+  renderLineageLinks(b);
+
   // --- Graceful degradation: show/hide based on available gear ---
   const hasTilt = !!b.tilt_device_id;
   const hasCtrl = !!b.controller_device_id;
@@ -1133,6 +1153,76 @@ function renderBrewDetail(b) {
 
   // Load feedback chart
   if (b.temp_feedback_enabled) loadFeedbackChart(b.id, true);
+
+  // Load legendary profile dropdown for active brews
+  if (b.status === "active") loadLegendaryProfileDropdown();
+}
+
+async function renderLineageLinks(b) {
+  const container = document.getElementById("brew-lineage-links");
+  if (!container) return;
+  if (!b.parent_brew_id && !b.batch_number) {
+    // Check if this brew has children (is a parent of other brews)
+    try {
+      const lineage = await (await fetch(`/api/brews/${b.id}/lineage`)).json();
+      if (lineage.length <= 1) { container.style.display = "none"; return; }
+      const links = lineage.filter(l => l.id !== b.id).map(l =>
+        `<a href="#" onclick="event.preventDefault();showPage('brew-detail','${l.id}')" style="color:#58a6ff">${esc(l.name)}</a>`
+      );
+      container.innerHTML = "Lineage: " + links.join(", ");
+      container.style.display = "";
+    } catch (e) { container.style.display = "none"; }
+    return;
+  }
+  try {
+    const lineage = await (await fetch(`/api/brews/${b.id}/lineage`)).json();
+    if (lineage.length <= 1) { container.style.display = "none"; return; }
+    const links = lineage.filter(l => l.id !== b.id).map(l =>
+      `<a href="#" onclick="event.preventDefault();showPage('brew-detail','${l.id}')" style="color:#58a6ff">${esc(l.name)}</a>`
+    );
+    container.innerHTML = "Lineage: " + links.join(", ");
+    container.style.display = "";
+  } catch (e) { container.style.display = "none"; }
+}
+
+async function loadLegendaryProfileDropdown() {
+  const sel = document.getElementById("load-legendary-profile");
+  if (!sel) return;
+  try {
+    const profiles = await (await fetch("/api/brews/legendary-profiles")).json();
+    sel.innerHTML = '<option value="">-- Select a brew --</option>';
+    profiles.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      const steps = (p.temp_profile.steps || []).length;
+      opt.textContent = `${p.name} (${steps} step${steps !== 1 ? 's' : ''})`;
+      sel.appendChild(opt);
+    });
+  } catch (e) {}
+}
+
+async function loadLegendaryProfile() {
+  const sel = document.getElementById("load-legendary-profile");
+  if (!sel || !sel.value) return;
+  try {
+    const profiles = await (await fetch("/api/brews/legendary-profiles")).json();
+    const match = profiles.find(p => p.id === sel.value);
+    if (!match || !match.temp_profile || !match.temp_profile.steps) return;
+    if (profileSteps.length > 0 && !confirm("Replace current profile steps with the profile from " + match.name + "?")) {
+      sel.value = "";
+      return;
+    }
+    profileSteps = JSON.parse(JSON.stringify(match.temp_profile.steps));
+    // Remove runtime state
+    profileSteps.forEach(s => { delete s._active; });
+    renderProfileSteps();
+    if (currentBrewId) {
+      const brew = await (await fetch(`/api/brews/${currentBrewId}`)).json();
+      renderProfileTimeline(brew);
+    }
+    showToast("Profile loaded from " + match.name, "success");
+    sel.value = "";
+  } catch (e) { showToast("Failed to load profile", "error"); }
 }
 
 let brewGauges = {};
@@ -1578,6 +1668,11 @@ function renderBrewLog(events, startedAt) {
       reminder_fired: "Reminder",
       cold_crash: "Cold Crash",
       profile_step: "Profile Step",
+      clarifier: "Clarifying Agent",
+      ingredient: "Ingredient",
+      yeast: "Yeast Pitched",
+      transfer: "Transferred",
+      bottled: "Bottled/Kegged",
     };
     const label = typeLabels[ev.event_type] || ev.event_type;
     const editable = !systemEvents.has(ev.event_type) && ev.id;
@@ -2282,32 +2377,101 @@ document.getElementById("btn-feedback-stop").addEventListener("click", async () 
   } catch (e) { showToast("Failed", "error"); }
 });
 
-document.querySelectorAll(".brew-event-btn").forEach(btn => {
-  btn.addEventListener("click", async () => {
-    if (!currentBrewId) return;
-    const eventType = btn.dataset.event;
-    let desc = "";
-    if (eventType === "note") {
-      desc = prompt("Enter note:");
-      if (!desc) return;
-    } else if (eventType === "dry_hop") {
-      desc = prompt("Hop addition details (optional):") || "Dry hopped";
-    } else if (eventType === "sample") {
-      desc = prompt("Sample notes (optional):") || "Took sample";
-    }
+function openAddEventModal() {
+  if (!currentBrewId) return;
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `<div class="modal-box" style="max-width:420px">
+    <h3 style="margin-bottom:12px">Add Brew Event</h3>
+    <div class="form-group" style="margin-bottom:10px">
+      <label for="event-type-select">Event Type</label>
+      <select id="event-type-select" style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);padding:6px 8px;border-radius:4px;width:100%">
+        <option value="note">Note</option>
+        <option value="dry_hop">Dry Hopped</option>
+        <option value="sample">Took Sample</option>
+        <option value="clarifier">Added Clarifying Agent</option>
+        <option value="ingredient">Added Ingredient</option>
+        <option value="yeast">Added Yeast / Pitched</option>
+        <option value="cold_crash">Cold Crash</option>
+        <option value="transfer">Transferred / Racked</option>
+        <option value="bottled">Bottled / Kegged</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label for="event-desc-input">Details</label>
+      <input type="text" id="event-desc-input" placeholder="What happened?" style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);padding:6px 8px;border-radius:4px;width:100%">
+    </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label for="event-time-input">When (leave blank for now)</label>
+      <input type="datetime-local" id="event-time-input" style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);padding:6px 8px;border-radius:4px;width:100%">
+    </div>
+    <div class="btn-row">
+      <button class="btn-save" id="event-modal-save">Log Event</button>
+      <button class="btn-stop" id="event-modal-cancel">Cancel</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  // Pre-fill time to now
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  document.getElementById("event-time-input").value =
+    `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+  overlay.querySelector("#event-modal-cancel").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.querySelector("#event-modal-save").onclick = async () => {
+    const eventType = document.getElementById("event-type-select").value;
+    const desc = document.getElementById("event-desc-input").value.trim();
+    const timeVal = document.getElementById("event-time-input").value;
+    const eventTypeLabels = {
+      note: "Note", dry_hop: "Dry hopped", sample: "Took sample",
+      clarifier: "Clarifying agent added", ingredient: "Ingredient added",
+      yeast: "Yeast pitched", cold_crash: "Cold crash started",
+      transfer: "Transferred", bottled: "Bottled/kegged"
+    };
+    const finalDesc = desc || eventTypeLabels[eventType] || eventType;
+
+    overlay.remove();
     try {
-      await fetch(`/api/brews/${currentBrewId}/event`, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event_type: eventType, description: desc }) });
+      const body = { event_type: eventType, description: finalDesc };
+      const res = await fetch(`/api/brews/${currentBrewId}/event`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error();
+
+      // If the user set a custom time (different from now), update the event timestamp
+      if (timeVal) {
+        const customTs = new Date(timeVal).getTime() / 1000;
+        const nowTs = Date.now() / 1000;
+        if (Math.abs(customTs - nowTs) > 120) {
+          // Fetch the latest event and update its timestamp
+          const brewRes = await fetch(`/api/brews/${currentBrewId}`);
+          const brew = await brewRes.json();
+          const events = brew.events || [];
+          const lastEvent = events[events.length - 1];
+          if (lastEvent && lastEvent.id) {
+            await fetch(`/api/brews/${currentBrewId}/event/${lastEvent.id}`, {
+              method: "PUT", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ timestamp: customTs })
+            });
+          }
+        }
+      }
+
       showToast("Event logged", "success");
       loadBrewDetail(currentBrewId);
     } catch (e) { showToast("Failed", "error"); }
-  });
-});
+  };
+}
 
 /* --- Temperature Profile --- */
 let profileSteps = [];  // Working copy while editing
+let _profileBrew = null;  // Cached brew object for re-rendering
 
 function renderProfileDesigner(brew) {
+  _profileBrew = brew;
   const profile = brew.temp_profile || {};
   const steps = profile.steps || [];
   profileSteps = JSON.parse(JSON.stringify(steps));  // deep copy for editing
@@ -2331,7 +2495,7 @@ function renderProfileDesigner(brew) {
 function renderProfileSteps() {
   const el = document.getElementById("profile-steps-list");
   if (!profileSteps.length) {
-    el.innerHTML = '<div class="help-text" style="margin:8px 0">No steps defined. Add steps below to build a temperature schedule.</div>';
+    el.innerHTML = '<div class="help-text" style="margin:8px 0">No steps defined. Add steps below or click the chart to place points.</div>';
     return;
   }
   const sorted = [...profileSteps].sort((a, b) => a.day - b.day);
@@ -2345,30 +2509,55 @@ function renderProfileSteps() {
   </div>`;
 }
 
-function renderProfileTimeline(brew) {
-  const el = document.getElementById("profile-timeline");
-  if (!profileSteps.length) { el.innerHTML = ''; return; }
+function _profileLayout(el) {
+  const w = el.clientWidth || 500;
+  const h = 120;
+  const pad = { l: 45, r: 15, t: 10, b: 25 };
+  const cw = w - pad.l - pad.r;
+  const ch = h - pad.t - pad.b;
+  return { w, h, pad, cw, ch };
+}
 
-  const sorted = [...profileSteps].sort((a, b) => a.day - b.day);
+function _profileScales(sorted, layout) {
   const maxDay = Math.max(sorted[sorted.length - 1].day + 3, 14);
   const minTemp = Math.min(...sorted.map(s => s.temp)) - 2;
   const maxTemp = Math.max(...sorted.map(s => s.temp)) + 2;
   const tempRange = maxTemp - minTemp || 1;
+  const { pad, cw, ch } = layout;
+  const xScale = (d) => pad.l + (d / maxDay) * cw;
+  const yScale = (t) => pad.t + ch - ((t - minTemp) / tempRange) * ch;
+  const xInv = (px) => ((px - pad.l) / cw) * maxDay;
+  const yInv = (py) => minTemp + ((pad.t + ch - py) / ch) * tempRange;
+  return { maxDay, minTemp, maxTemp, tempRange, xScale, yScale, xInv, yInv };
+}
+
+function _snapVal(v, step) { return Math.round(Math.round(v / step) * step * 10) / 10; }
+
+function renderProfileTimeline(brew) {
+  if (brew) _profileBrew = brew;
+  const el = document.getElementById("profile-timeline");
+  if (!profileSteps.length) {
+    // Show empty chart area with click hint
+    const layout = _profileLayout(el);
+    el.innerHTML = `<svg width="100%" height="${layout.h}" viewBox="0 0 ${layout.w} ${layout.h}" preserveAspectRatio="none">
+      <rect class="profile-bg-hit" x="${layout.pad.l}" y="${layout.pad.t}" width="${layout.cw}" height="${layout.ch}" fill="transparent"/>
+      <text x="${layout.w / 2}" y="${layout.h / 2}" fill="#484f58" font-size="11" text-anchor="middle">Click to add temperature steps</text>
+    </svg>`;
+    _attachProfileClickHandler(el, brew);
+    return;
+  }
+
+  const sorted = [...profileSteps].sort((a, b) => a.day - b.day);
+  const layout = _profileLayout(el);
+  const { w, h, pad } = layout;
+  const scales = _profileScales(sorted, layout);
+  const { maxDay, minTemp, tempRange, xScale, yScale } = scales;
 
   // Find current day
   let currentDay = 0;
   if (brew && brew.started_at) {
     currentDay = (Date.now() - new Date(brew.started_at).getTime()) / 86400000;
   }
-
-  const w = el.clientWidth || 500;
-  const h = 120;
-  const pad = { l: 45, r: 15, t: 10, b: 25 };
-  const cw = w - pad.l - pad.r;
-  const ch = h - pad.t - pad.b;
-
-  const xScale = (d) => pad.l + (d / maxDay) * cw;
-  const yScale = (t) => pad.t + ch - ((t - minTemp) / tempRange) * ch;
 
   // Build stepped path
   let path = '';
@@ -2377,12 +2566,11 @@ function renderProfileTimeline(brew) {
     const y = yScale(sorted[i].temp);
     if (i === 0) path += `M${x},${y}`;
     else path += `L${x},${y}`;
-    // Extend horizontally to next step or end
     const nextDay = i < sorted.length - 1 ? sorted[i + 1].day : maxDay;
     path += `L${xScale(nextDay)},${y}`;
   }
 
-  // Fill path (same but closed to bottom)
+  // Fill path
   let fillPath = path + `L${xScale(maxDay)},${yScale(minTemp)}L${xScale(0)},${yScale(minTemp)}Z`;
 
   // Current day marker
@@ -2398,9 +2586,9 @@ function renderProfileTimeline(brew) {
 
   // Temp labels
   let tempLabels = '';
-  const steps = Math.max(2, Math.ceil(tempRange / 5));
-  for (let i = 0; i <= steps; i++) {
-    const t = minTemp + (i / steps) * tempRange;
+  const tempSteps = Math.max(2, Math.ceil(tempRange / 5));
+  for (let i = 0; i <= tempSteps; i++) {
+    const t = minTemp + (i / tempSteps) * tempRange;
     const y = yScale(t);
     tempLabels += `<text x="${pad.l - 5}" y="${y + 3}" fill="#484f58" font-size="10" text-anchor="end">${t.toFixed(0)}°</text>`;
     tempLabels += `<line x1="${pad.l}" y1="${y}" x2="${w - pad.r}" y2="${y}" stroke="#21262d" stroke-dasharray="2,2"/>`;
@@ -2417,14 +2605,191 @@ function renderProfileTimeline(brew) {
   }
 
   el.innerHTML = `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <rect class="profile-bg-hit" x="${pad.l}" y="${pad.t}" width="${layout.cw}" height="${layout.ch}" fill="transparent"/>
     ${gridLines}${tempLabels}
     <path d="${fillPath}" fill="rgba(46,160,67,0.1)" stroke="none"/>
     <path d="${path}" fill="none" stroke="#2ea043" stroke-width="2"/>
     ${stepLabels}
     ${currentDay > 0 ? `<line x1="${nowX}" y1="${pad.t}" x2="${nowX}" y2="${h - pad.b}" stroke="#f0883e" stroke-width="1.5" stroke-dasharray="4,3"/>
     <text x="${nowX}" y="${pad.t - 2}" fill="#f0883e" font-size="9" text-anchor="middle">now</text>` : ''}
-    ${sorted.map(s => `<circle cx="${xScale(s.day)}" cy="${yScale(s.temp)}" r="4" fill="#2ea043" stroke="#0d1117" stroke-width="1.5"/>`).join('')}
+    ${sorted.map((s, i) => `<circle class="profile-step-dot" data-index="${i}" cx="${xScale(s.day)}" cy="${yScale(s.temp)}" r="6" fill="#2ea043" stroke="#0d1117" stroke-width="1.5"/>`).join('')}
   </svg>`;
+
+  // Attach interaction handlers
+  _attachProfileClickHandler(el, brew);
+  _attachProfileDragHandlers(el, sorted, layout, scales, brew);
+}
+
+function _attachProfileClickHandler(el, brew) {
+  const svg = el.querySelector('svg');
+  if (!svg) return;
+  const bgRect = svg.querySelector('.profile-bg-hit');
+  if (!bgRect) return;
+
+  bgRect.addEventListener('click', function(e) {
+    // Don't trigger if we just finished a drag
+    if (_profileDragOccurred) { _profileDragOccurred = false; return; }
+
+    const svgEl = el.querySelector('svg');
+    const pt = svgEl.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const svgPt = pt.matrixTransform(svgEl.getScreenCTM().inverse());
+
+    // If no steps yet, use reasonable defaults for scale inversion
+    if (!profileSteps.length) {
+      const layout = _profileLayout(el);
+      const defaultMaxDay = 14;
+      const defaultMinTemp = 15;
+      const defaultMaxTemp = 25;
+      const defaultRange = defaultMaxTemp - defaultMinTemp;
+      const rawDay = ((svgPt.x - layout.pad.l) / layout.cw) * defaultMaxDay;
+      const rawTemp = defaultMinTemp + ((layout.pad.t + layout.ch - svgPt.y) / layout.ch) * defaultRange;
+      const day = Math.max(0, _snapVal(rawDay, 0.5));
+      const temp = _snapVal(rawTemp, 0.5);
+      profileSteps.push({ day, temp, label: '' });
+      profileSteps.sort((a, b) => a.day - b.day);
+      renderProfileSteps();
+      renderProfileTimeline(_profileBrew);
+      showToast(`Added step: Day ${day}, ${temp}°C`, 'success');
+      return;
+    }
+
+    const sorted = [...profileSteps].sort((a, b) => a.day - b.day);
+    const layout = _profileLayout(el);
+    const scales = _profileScales(sorted, layout);
+
+    const rawDay = scales.xInv(svgPt.x);
+    const rawTemp = scales.yInv(svgPt.y);
+    const day = Math.max(0, _snapVal(rawDay, 0.5));
+    const temp = _snapVal(rawTemp, 0.5);
+
+    // Check we're within chart bounds
+    if (svgPt.x < layout.pad.l || svgPt.x > layout.pad.l + layout.cw) return;
+    if (svgPt.y < layout.pad.t || svgPt.y > layout.pad.t + layout.ch) return;
+
+    profileSteps.push({ day, temp, label: '' });
+    profileSteps.sort((a, b) => a.day - b.day);
+    renderProfileSteps();
+    renderProfileTimeline(_profileBrew);
+    showToast(`Added step: Day ${day}, ${temp}°C`, 'success');
+  });
+}
+
+let _profileDragOccurred = false;
+
+function _attachProfileDragHandlers(el, sorted, layout, scales, brew) {
+  const svg = el.querySelector('svg');
+  if (!svg) return;
+  const dots = svg.querySelectorAll('.profile-step-dot');
+  const { pad } = layout;
+
+  dots.forEach(dot => {
+    let dragging = false;
+    let dragLabel = null;
+    let origStep = null;
+    let stepRef = null;
+
+    const onPointerDown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragging = true;
+      _profileDragOccurred = false;
+      const idx = parseInt(dot.getAttribute('data-index'));
+      origStep = sorted[idx];
+      // Find the matching step in profileSteps by reference values
+      stepRef = profileSteps.find(s => s.day === origStep.day && s.temp === origStep.temp);
+
+      dot.style.cursor = 'grabbing';
+      dot.setAttribute('r', '8');
+
+      // Create floating label
+      dragLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      dragLabel.setAttribute('class', 'profile-drag-label');
+      dragLabel.setAttribute('text-anchor', 'middle');
+      svg.appendChild(dragLabel);
+
+      dot.setPointerCapture(e.pointerId);
+      dot.addEventListener('pointermove', onPointerMove);
+      dot.addEventListener('pointerup', onPointerUp);
+    };
+
+    const onPointerMove = (e) => {
+      if (!dragging) return;
+      _profileDragOccurred = true;
+
+      const pt = svg.createSVGPoint();
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+      const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+      // Clamp to chart area
+      const cx = Math.max(pad.l, Math.min(pad.l + layout.cw, svgPt.x));
+      const cy = Math.max(pad.t, Math.min(pad.t + layout.ch, svgPt.y));
+
+      dot.setAttribute('cx', cx);
+      dot.setAttribute('cy', cy);
+
+      // Show snapped values
+      const rawDay = scales.xInv(cx);
+      const rawTemp = scales.yInv(cy);
+      const snapDay = Math.max(0, _snapVal(rawDay, 0.5));
+      const snapTemp = _snapVal(rawTemp, 0.5);
+
+      if (dragLabel) {
+        dragLabel.setAttribute('x', cx);
+        dragLabel.setAttribute('y', cy - 12);
+        dragLabel.textContent = `Day ${snapDay}, ${snapTemp}°C`;
+      }
+    };
+
+    const onPointerUp = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      dot.releasePointerCapture(e.pointerId);
+      dot.removeEventListener('pointermove', onPointerMove);
+      dot.removeEventListener('pointerup', onPointerUp);
+
+      if (dragLabel) { dragLabel.remove(); dragLabel = null; }
+      dot.style.cursor = '';
+      dot.setAttribute('r', '6');
+
+      if (!_profileDragOccurred) return;  // Was just a click, not a drag
+
+      // Compute final snapped position
+      const pt = svg.createSVGPoint();
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+      const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+      const cx = Math.max(pad.l, Math.min(pad.l + layout.cw, svgPt.x));
+      const cy = Math.max(pad.t, Math.min(pad.t + layout.ch, svgPt.y));
+
+      const newDay = Math.max(0, _snapVal(scales.xInv(cx), 0.5));
+      const newTemp = _snapVal(scales.yInv(cy), 0.5);
+
+      if (stepRef) {
+        stepRef.day = newDay;
+        stepRef.temp = newTemp;
+      }
+      profileSteps.sort((a, b) => a.day - b.day);
+      renderProfileSteps();
+      renderProfileTimeline(_profileBrew);
+    };
+
+    dot.addEventListener('pointerdown', onPointerDown);
+
+    // Double-click to delete
+    dot.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = parseInt(dot.getAttribute('data-index'));
+      const step = sorted[idx];
+      profileSteps = profileSteps.filter(s => !(s.day === step.day && s.temp === step.temp));
+      renderProfileSteps();
+      renderProfileTimeline(_profileBrew);
+      showToast(`Removed step: Day ${step.day}, ${step.temp}°C`, 'success');
+    });
+  });
 }
 
 function addProfileStep() {
@@ -2435,10 +2800,7 @@ function addProfileStep() {
   profileSteps.push({ day, temp, label });
   profileSteps.sort((a, b) => a.day - b.day);
   renderProfileSteps();
-  // Re-render timeline if we have a brew context
-  if (currentBrewId) {
-    fetch(`/api/brews/${currentBrewId}`).then(r => r.json()).then(b => renderProfileTimeline(b));
-  }
+  renderProfileTimeline(_profileBrew);
   document.getElementById("profile-step-day").value = "";
   document.getElementById("profile-step-temp").value = "";
   document.getElementById("profile-step-label").value = "";
@@ -2449,9 +2811,7 @@ function removeProfileStep(index) {
   const step = sorted[index];
   profileSteps = profileSteps.filter(s => s !== step);
   renderProfileSteps();
-  if (currentBrewId) {
-    fetch(`/api/brews/${currentBrewId}`).then(r => r.json()).then(b => renderProfileTimeline(b));
-  }
+  renderProfileTimeline(_profileBrew);
 }
 
 async function saveProfile() {
@@ -2788,9 +3148,11 @@ function filterLegendaryBrews() {
             <span>FG: ${fmtG(b.fg)}</span>
           </div>
           ${b.tasting_notes ? `<p class="legendary-tile-notes">${esc(b.tasting_notes)}</p>` : ''}
+          ${b.batch_number ? `<span class="badge-sm" style="background:rgba(230,168,23,0.15);color:#e6a817;margin-bottom:6px;display:inline-block">Batch #${b.batch_number}</span>` : ''}
           <div class="card-actions" onclick="event.stopPropagation()">
             <button onclick="editLegendaryBrew('${b.id}')">Edit</button>
             <button onclick="showPage('brew-detail','${b.id}')">Details</button>
+            <button onclick="openBrewAgainModal('${b.id}')" class="btn-brew-again">Brew Again</button>
           </div>
         </div>
       </div>`;
@@ -2865,6 +3227,103 @@ async function saveLegendaryEdit() {
     loadLegendaryBrews();
     showToast("Brew notes saved", "success");
   } catch (e) { showToast("Failed to save", "error"); }
+}
+
+/* --- Brew Again --- */
+let brewAgainData = null;  // Stores the clone data while modal is open
+
+async function openBrewAgainModal(brewId) {
+  try {
+    const res = await fetch(`/api/brews/${brewId}/brew-again`, { method: "POST" });
+    if (!res.ok) { showToast("Failed to prepare re-brew", "error"); return; }
+    brewAgainData = await res.json();
+
+    // Populate device selects
+    const tiltSel = document.getElementById("brew-again-tilt");
+    const ctrlSel = document.getElementById("brew-again-controller");
+    tiltSel.innerHTML = '<option value="">None</option>';
+    ctrlSel.innerHTML = '<option value="">None</option>';
+    try {
+      const devices = await (await fetch("/api/devices")).json();
+      Object.keys(devices).forEach(id => {
+        const dev = devices[id];
+        const opt = document.createElement("option");
+        opt.value = id;
+        opt.textContent = dev._nickname || dev.name || id.substring(0, 8);
+        if (dev.deviceType === "TILT") tiltSel.appendChild(opt);
+        else ctrlSel.appendChild(opt);
+      });
+    } catch (e) {}
+
+    // Fill form fields
+    document.getElementById("brew-again-parent-id").value = brewAgainData.parent_brew_id || "";
+    document.getElementById("brew-again-batch-number").value = brewAgainData.batch_number || "";
+    document.getElementById("brew-again-name").value = brewAgainData.name || "";
+    document.getElementById("brew-again-og").value = brewAgainData.og || "";
+    document.getElementById("brew-again-target-temp").value = brewAgainData.target_beer_temp || "";
+    document.getElementById("brew-again-notes").value = brewAgainData.notes || "";
+    document.getElementById("brew-again-recipe").value = brewAgainData.recipe || "";
+    document.getElementById("brew-again-temp-source").value = brewAgainData.temp_source || "hydrometer";
+
+    // Show temp profile preview if it exists
+    const profileSection = document.getElementById("brew-again-profile-section");
+    const profilePreview = document.getElementById("brew-again-profile-preview");
+    if (brewAgainData.temp_profile && brewAgainData.temp_profile.steps && brewAgainData.temp_profile.steps.length) {
+      const steps = brewAgainData.temp_profile.steps.sort((a, b) => a.day - b.day);
+      profilePreview.innerHTML = steps.map(s =>
+        `Day ${s.day}+: ${s.temp}&deg;C${s.label ? ' (' + esc(s.label) + ')' : ''}`
+      ).join('<br>');
+      profileSection.style.display = "";
+    } else {
+      profileSection.style.display = "none";
+    }
+
+    document.getElementById("brew-again-modal").style.display = "";
+  } catch (e) { showToast("Failed to prepare re-brew", "error"); }
+}
+
+function closeBrewAgainModal() {
+  document.getElementById("brew-again-modal").style.display = "none";
+  brewAgainData = null;
+}
+
+// Close modal on overlay click
+document.getElementById("brew-again-modal").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) closeBrewAgainModal();
+});
+
+async function confirmBrewAgain() {
+  if (!brewAgainData) return;
+  const data = {
+    name: document.getElementById("brew-again-name").value || "Untitled Brew",
+    og: parseFloat(document.getElementById("brew-again-og").value) || null,
+    target_beer_temp: parseFloat(document.getElementById("brew-again-target-temp").value) || null,
+    tilt_device_id: document.getElementById("brew-again-tilt").value || null,
+    controller_device_id: document.getElementById("brew-again-controller").value || null,
+    temp_source: document.getElementById("brew-again-temp-source").value,
+    notes: document.getElementById("brew-again-notes").value,
+    recipe: document.getElementById("brew-again-recipe").value,
+    parent_brew_id: document.getElementById("brew-again-parent-id").value || null,
+    batch_number: parseInt(document.getElementById("brew-again-batch-number").value) || null,
+    temp_profile: brewAgainData.temp_profile || null,
+  };
+  try {
+    const res = await fetch("/api/brews/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+    if (res.ok) {
+      const session = await res.json();
+      closeBrewAgainModal();
+      showToast("Brew started!", "success");
+      loadBrewNav();
+      showPage("brew-detail", session.id);
+    } else {
+      const r = await res.json();
+      showToast(r.error || "Failed to start brew", "error");
+    }
+  } catch (e) { showToast("Failed to start brew", "error"); }
 }
 
 /* --- TiltPi Management --- */

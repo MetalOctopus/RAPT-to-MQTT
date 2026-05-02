@@ -1,6 +1,7 @@
 """Brew session management with multi-brew support, reminders, and smart temperature feedback."""
 
 import json
+import re
 import time
 import threading
 import uuid
@@ -42,7 +43,8 @@ class BrewSession:
         return dict(self._active_sessions)
 
     def start_brew(self, name, tilt_device_id=None, controller_device_id=None,
-                   target_beer_temp=None, og=None, notes="", temp_source="hydrometer"):
+                   target_beer_temp=None, og=None, notes="", temp_source="hydrometer",
+                   parent_brew_id=None, batch_number=None, temp_profile=None, recipe=None):
         session_id = str(uuid.uuid4())[:8]
         session = {
             "id": session_id,
@@ -65,6 +67,10 @@ class BrewSession:
             "temp_feedback_max": 35.0,
             "temp_feedback_deadband": 0.3,
             "temp_source": temp_source,
+            "parent_brew_id": parent_brew_id,
+            "batch_number": batch_number,
+            "temp_profile": temp_profile,
+            "recipe": recipe,
         }
 
         self._history.save_session(session_id, json.dumps(session))
@@ -72,6 +78,100 @@ class BrewSession:
         self._active_sessions[session_id] = session
         self._logger.info(f"Brew session started: {name} ({session_id})")
         return session
+
+    def _get_lineage_root(self, session_id):
+        """Walk up parent_brew_id links to find the original brew in a lineage."""
+        visited = set()
+        current_id = session_id
+        while current_id and current_id not in visited:
+            visited.add(current_id)
+            session_json = self._history.get_session(current_id)
+            if not session_json:
+                break
+            session = json.loads(session_json)
+            parent = session.get("parent_brew_id")
+            if not parent:
+                return current_id
+            current_id = parent
+        return current_id
+
+    def _count_lineage_brews(self, root_id):
+        """Count all brews in a lineage (brews whose root ancestor is root_id)."""
+        count = 0
+        for sid, data_json in self._history.list_sessions():
+            s = json.loads(data_json)
+            # A brew is in this lineage if it IS the root, or its root ancestor is root_id
+            if sid == root_id:
+                count += 1
+            elif s.get("parent_brew_id"):
+                if self._get_lineage_root(sid) == root_id:
+                    count += 1
+        return count
+
+    def brew_again(self, source_brew_id):
+        """Clone a completed brew for re-brewing with batch tracking."""
+        source_json = self._history.get_session(source_brew_id)
+        if not source_json:
+            raise ValueError(f"Brew {source_brew_id} not found.")
+        source = json.loads(source_json)
+
+        # Find the lineage root and compute batch number
+        root_id = self._get_lineage_root(source_brew_id)
+        existing_count = self._count_lineage_brews(root_id)
+        batch_number = existing_count + 1
+
+        # If the source itself has no batch_number, it's batch #1
+        # (retroactively assigned — old brews before this feature)
+        if source.get("batch_number") is None:
+            source["batch_number"] = 1
+            self._history.save_session(source_brew_id, json.dumps(source))
+
+        # Build the cloned brew data
+        # Strip batch number suffix from name if present (e.g. "Black IPA #2" -> "Black IPA")
+        base_name = source.get("name", "Untitled Brew")
+        base_name = re.sub(r'\s*#\d+$', '', base_name)
+        new_name = f"{base_name} #{batch_number}"
+
+        # Clone the temp profile (deep copy) if it exists
+        temp_profile = None
+        if source.get("temp_profile"):
+            temp_profile = json.loads(json.dumps(source["temp_profile"]))
+            # Reset runtime state from the profile
+            if "current_step_index" in temp_profile:
+                del temp_profile["current_step_index"]
+
+        return {
+            "name": new_name,
+            "og": None,  # OG varies batch to batch — measure fresh
+            "target_beer_temp": source.get("target_beer_temp"),
+            "notes": source.get("notes", ""),
+            "recipe": source.get("recipe", ""),
+            "temp_profile": temp_profile,
+            "temp_source": source.get("temp_source", "hydrometer"),
+            "parent_brew_id": root_id,
+            "batch_number": batch_number,
+            "source_brew_id": source_brew_id,
+            "source_brew_name": source.get("name", ""),
+        }
+
+    def get_lineage(self, brew_id):
+        """Get all brews in the same lineage as the given brew."""
+        root_id = self._get_lineage_root(brew_id)
+        lineage = []
+        for sid, data_json in self._history.list_sessions():
+            s = json.loads(data_json)
+            if sid == root_id or self._get_lineage_root(sid) == root_id:
+                lineage.append({
+                    "id": s["id"],
+                    "name": s.get("name", ""),
+                    "batch_number": s.get("batch_number"),
+                    "status": s.get("status"),
+                    "started_at": s.get("started_at"),
+                    "og": s.get("og"),
+                    "fg": s.get("fg"),
+                })
+        lineage.sort(key=lambda x: x.get("batch_number") or 0)
+        return lineage
 
     def update_session(self, session_id, updates):
         session = self._active_sessions.get(session_id)

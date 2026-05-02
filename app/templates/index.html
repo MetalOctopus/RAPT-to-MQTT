@@ -274,8 +274,15 @@
           </div>
           <div class="brew-hero-info">
             <h2 id="brew-detail-name">--</h2>
-            <span id="brew-status-badge" class="badge online">Active</span>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span id="brew-status-badge" class="badge online">Active</span>
+              <span id="brew-batch-badge" class="badge-sm" style="display:none"></span>
+            </div>
             <span id="brew-detail-duration" class="help-text"></span>
+            <div id="brew-lineage-links" style="display:none;font-size:0.85em;color:#8b949e;margin-top:2px"></div>
+            <div id="brew-again-wrapper" style="display:none;margin-top:4px">
+              <button id="btn-brew-again" class="btn-save btn-sm" onclick="openBrewAgainModal(currentBrewId)">Brew Again</button>
+            </div>
           </div>
         </div>
       </div>
@@ -434,6 +441,12 @@
       <div class="panel brew-needs-ctrl" id="profile-panel">
         <h2>Temperature Profile</h2>
         <p class="help-text" style="margin-bottom:12px">Design a multi-step fermentation schedule. The system automatically advances through each step and sets the controller target. Works with or without smart feedback.</p>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <label for="load-legendary-profile" style="white-space:nowrap;font-size:0.85em;color:#8b949e">Load from Legendary Brew:</label>
+          <select id="load-legendary-profile" style="flex:1;max-width:300px" onchange="loadLegendaryProfile()">
+            <option value="">-- Select a brew --</option>
+          </select>
+        </div>
         <div id="profile-timeline" class="profile-timeline"></div>
         <div id="profile-steps-list"></div>
         <div class="profile-add-step" style="margin-top:12px">
@@ -581,9 +594,7 @@
       <div class="panel">
         <h2>Brew Log</h2>
         <div class="btn-row" style="margin-bottom:12px">
-          <button class="btn-save brew-event-btn" data-event="dry_hop">Dry Hopped</button>
-          <button class="btn-save brew-event-btn" data-event="sample">Took Sample</button>
-          <button class="btn-save brew-event-btn" data-event="note">Add Note</button>
+          <button class="btn-save" onclick="openAddEventModal()">Add Event</button>
         </div>
         <div id="brew-events-list" class="brew-log-text"></div>
       </div>
@@ -645,6 +656,62 @@
         <div class="btn-row" style="margin-top:16px">
           <button onclick="saveLegendaryEdit()" class="btn-save">Save</button>
           <button onclick="closeLegendaryEdit()" class="btn-stop">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Brew Again Modal -->
+    <div id="brew-again-modal" class="modal-overlay" style="display:none">
+      <div class="modal-content" style="max-width:560px">
+        <h3>Brew Again</h3>
+        <p class="help-text" style="margin-bottom:12px">Re-brew with the same recipe and settings. Modify anything below before starting.</p>
+        <input type="hidden" id="brew-again-parent-id">
+        <input type="hidden" id="brew-again-batch-number">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="brew-again-name">Beer Name</label>
+            <input type="text" id="brew-again-name">
+          </div>
+          <div class="form-group">
+            <label for="brew-again-og">Original Gravity (OG)</label>
+            <input type="number" id="brew-again-og" step="0.001" min="0.990" max="1.200">
+          </div>
+          <div class="form-group">
+            <label for="brew-again-target-temp">Target Beer Temp (&deg;C)</label>
+            <input type="number" id="brew-again-target-temp" step="0.5">
+          </div>
+          <div class="form-group">
+            <label for="brew-again-tilt">Temperature Sensor</label>
+            <select id="brew-again-tilt"><option value="">None</option></select>
+          </div>
+          <div class="form-group">
+            <label for="brew-again-controller">Temperature Controller</label>
+            <select id="brew-again-controller"><option value="">None</option></select>
+          </div>
+          <div class="form-group">
+            <label for="brew-again-temp-source">Feedback Temp Source</label>
+            <select id="brew-again-temp-source">
+              <option value="hydrometer">Hydrometer (in-liquid)</option>
+              <option value="controller">Controller (fridge air)</option>
+              <option value="mean">Mean of both</option>
+            </select>
+          </div>
+          <div class="form-group full-width">
+            <label for="brew-again-notes">Notes</label>
+            <input type="text" id="brew-again-notes" placeholder="Changes for this batch...">
+          </div>
+          <div class="form-group full-width">
+            <label for="brew-again-recipe">Recipe</label>
+            <textarea id="brew-again-recipe" rows="3" placeholder="Grain bill, hops, yeast..."></textarea>
+          </div>
+          <div class="form-group full-width" id="brew-again-profile-section" style="display:none">
+            <label>Temperature Profile</label>
+            <div id="brew-again-profile-preview" class="help-text" style="padding:8px;background:#0d1117;border-radius:6px;margin-top:4px"></div>
+          </div>
+        </div>
+        <div class="btn-row" style="margin-top:16px">
+          <button onclick="confirmBrewAgain()" class="btn-save">Start Brew</button>
+          <button onclick="closeBrewAgainModal()" class="btn-stop">Cancel</button>
         </div>
       </div>
     </div>

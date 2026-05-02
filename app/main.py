@@ -387,10 +387,47 @@ def start_brew_session():
             og=data.get("og"),
             notes=data.get("notes", ""),
             temp_source=data.get("temp_source", "hydrometer"),
+            parent_brew_id=data.get("parent_brew_id"),
+            batch_number=data.get("batch_number"),
+            temp_profile=data.get("temp_profile"),
+            recipe=data.get("recipe"),
         )
         return jsonify(session)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/brews/<session_id>/brew-again", methods=["POST"])
+def brew_again(session_id):
+    """Get pre-filled data for re-brewing, or start the brew directly."""
+    try:
+        clone_data = brew.brew_again(session_id)
+        return jsonify(clone_data)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+@app.route("/api/brews/<session_id>/lineage", methods=["GET"])
+def brew_lineage(session_id):
+    """Get all brews in the same recipe lineage."""
+    lineage = brew.get_lineage(session_id)
+    return jsonify(lineage)
+
+
+@app.route("/api/brews/legendary-profiles", methods=["GET"])
+def legendary_profiles():
+    """Return legendary brews that have a saved temp_profile (for Load Profile dropdown)."""
+    sessions = history.list_sessions()
+    result = []
+    for sid, data_json in sessions:
+        s = json.loads(data_json)
+        if s.get("status") == "completed" and s.get("temp_profile") and s["temp_profile"].get("steps"):
+            result.append({
+                "id": s["id"],
+                "name": s.get("name", "Untitled"),
+                "temp_profile": s["temp_profile"],
+            })
+    return jsonify(result)
 
 
 @app.route("/api/brews/<session_id>/update", methods=["POST"])
@@ -673,6 +710,9 @@ def brew_history():
             "brewing_notes": s.get("brewing_notes", ""),
             "recipe_photo": s.get("recipe_photo", ""),
             "brew_photo": s.get("brew_photo", ""),
+            "parent_brew_id": s.get("parent_brew_id"),
+            "batch_number": s.get("batch_number"),
+            "temp_profile": s.get("temp_profile"),
         })
     return jsonify(result)
 
