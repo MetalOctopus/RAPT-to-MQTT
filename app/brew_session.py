@@ -371,6 +371,10 @@ class BrewSession:
                         f"Feedback: beer={beer_temp}\u00b0C (target {target_beer}\u00b0C) "
                         f"- within deadband, no adjustment"
                     )
+                    self._history.log_temp_feedback(
+                        session["id"], beer_temp, fridge_temp, target_beer,
+                        current_target, current_target, error, 0
+                    )
                     session["_feedback_state"] = {
                         "phase": "stable",
                         "timestamp": time.time(),

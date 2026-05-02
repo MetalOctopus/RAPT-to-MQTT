@@ -1884,7 +1884,7 @@ let feedbackRangeAll = false;
 function toggleFeedbackRange() {
   feedbackRangeAll = !feedbackRangeAll;
   const btn = document.getElementById("btn-feedback-range");
-  btn.textContent = feedbackRangeAll ? "Show: Entire Brew" : "Show: Last 4 Hours";
+  btn.textContent = feedbackRangeAll ? "Show: Entire Brew" : "Show: Last 24 Hours";
   if (lastFeedbackSession) loadFeedbackChart(lastFeedbackSession, true);
 }
 
@@ -1901,9 +1901,9 @@ async function loadFeedbackChart(sessionId, forceReload) {
     if (feedbackRangeAll) {
       pts = data; // entire brew
     } else {
-      const cutoff = Date.now() - (4 * 60 * 60 * 1000);
-      const recent = data.filter(d => d.timestamp * 1000 >= cutoff);
-      pts = recent.length ? recent : data.slice(-48);
+      const cutoff = Date.now() - (24 * 60 * 60 * 1000);
+      pts = data.filter(d => d.timestamp * 1000 >= cutoff);
+      if (!pts.length) pts = data.slice(-1); // show at least the last point
     }
 
     // Compute Y range: find min/max across all temps, pad by 2°C
@@ -1960,7 +1960,7 @@ async function loadFeedbackChart(sessionId, forceReload) {
             ticks: { color: "#8b949e", maxTicksLimit: 12, major: { enabled: true }, font: ctx => ctx.tick && ctx.tick.major ? { weight: "bold", size: 11 } : { size: 10 },
                    callback: function(val, idx, ticks) { const d = new Date(val); const hm = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); if (ticks[idx] && ticks[idx].major) { const mon = d.toLocaleString("en",{month:"short"}); return [mon + " " + d.getDate(), hm]; } return hm; } },
             grid: { color: "#21262d" },
-            title: { display: true, text: feedbackRangeAll ? "Entire Brew" : "Last 4 Hours", color: "#484f58", font: { size: 11 } },
+            title: { display: true, text: feedbackRangeAll ? "Entire Brew" : "Last 24 Hours", color: "#484f58", font: { size: 11 } },
           },
           y: { min: yMin, max: yMax,
             ticks: { color: "#8b949e", stepSize: 1, callback: v => v + "\u00b0C" },
