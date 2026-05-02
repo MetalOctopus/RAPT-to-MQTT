@@ -434,6 +434,17 @@ function renderDevice(dev) {
   document.getElementById("row-sensor").style.display = isTilt ? "none" : "";
   document.getElementById("row-telemetry").style.display = isTilt ? "none" : "";
 
+  // Enriched Tilt fields (from upgraded TiltPi flow)
+  const hasTiltExtras = isTilt && dev.txPower != null;
+  document.getElementById("row-tx-power").style.display = hasTiltExtras ? "" : "none";
+  document.getElementById("row-tilt-model").style.display = hasTiltExtras ? "" : "none";
+  document.getElementById("row-tilt-calibrated").style.display = hasTiltExtras ? "" : "none";
+  if (hasTiltExtras) {
+    document.getElementById("info-tx-power").textContent = dev.txPower + " dBm";
+    document.getElementById("info-tilt-model").textContent = dev.isProModel ? "Tilt Pro (HD)" : "Tilt Standard";
+    document.getElementById("info-tilt-calibrated").textContent = dev.calibrated ? "Yes" : "No";
+  }
+
   // Manage link and source hint
   const manageRow = document.getElementById("row-manage-link");
   const manageCell = document.getElementById("info-manage-link");

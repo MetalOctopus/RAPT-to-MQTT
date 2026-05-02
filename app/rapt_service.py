@@ -16,6 +16,7 @@ class RaptBridge:
     PUBLISH_TOPIC = "RAPT/temperatureController"
     COMMAND_TOPIC = "RAPT/temperatureController/Command"
     TILT_TOPIC = "TiltPi"
+    TILT_TOPIC_WILDCARD = "TiltPi/#"
 
     def __init__(self, config, logger, history=None):
         self._config = config
@@ -165,7 +166,8 @@ class RaptBridge:
             client.subscribe(self.COMMAND_TOPIC)
             self._logger.info(f"Subscribed to {self.COMMAND_TOPIC}")
             client.subscribe(self.TILT_TOPIC)
-            self._logger.info(f"Subscribed to {self.TILT_TOPIC}")
+            client.subscribe(self.TILT_TOPIC_WILDCARD)
+            self._logger.info(f"Subscribed to {self.TILT_TOPIC} and {self.TILT_TOPIC_WILDCARD}")
         else:
             self._logger.error(f"MQTT connection failed with code {rc}")
 
@@ -175,7 +177,7 @@ class RaptBridge:
 
     def _on_message(self, client, userdata, msg):
         try:
-            if msg.topic == self.TILT_TOPIC:
+            if msg.topic == self.TILT_TOPIC or msg.topic.startswith("TiltPi/"):
                 self._handle_tilt_message(msg)
                 return
 
@@ -192,7 +194,22 @@ class RaptBridge:
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
 
-            if "sg" in payload:
+            # Enriched format from upgraded TiltPi flow (per-colour topic)
+            if "gravity" in payload and "color" in payload:
+                sg = float(payload["gravity"])
+                temp_c = round(float(payload["temperature"]), 1)
+                temp_f = round(temp_c * 9 / 5 + 32, 1)
+                color = payload.get("color", "Unknown")
+                beer = payload.get("beerName", "")
+                rssi = payload.get("rssi")
+                mac = payload.get("mac", "")
+                uuid_str = ""
+                tx_power = payload.get("txPower")
+                is_pro = payload.get("isProModel", False)
+                calibrated = payload.get("calibrated", False)
+                tilt_timestamp = payload.get("timestamp")
+            # Legacy format (sg + temperature_raw in Fahrenheit)
+            elif "sg" in payload:
                 sg = float(payload["sg"])
                 temp_c = round((float(payload.get("temperature_raw", 0)) - 32) * 5 / 9, 1)
                 temp_f = float(payload.get("temperature_raw", 0))
@@ -201,7 +218,19 @@ class RaptBridge:
                 rssi = payload.get("rssi")
                 mac = payload.get("mac", "")
                 uuid_str = payload.get("uuid", "")
+                tx_power = None
+                is_pro = False
+                calibrated = False
+                tilt_timestamp = None
+            # Raw iBeacon format (major/minor) — backward compat from upgraded flow
+            # or from stock TiltPi. If we're getting enriched per-colour messages,
+            # skip the flat topic duplicate to avoid a phantom "tilt-unknown" device.
             elif "major" in payload and "minor" in payload:
+                if msg.topic == self.TILT_TOPIC and any(
+                    d.get("txPower") is not None for d in self._devices.values()
+                    if d.get("deviceType") == "TILT"
+                ):
+                    return  # enriched flow is active, skip flat duplicate
                 temp_f = float(payload["major"])
                 sg = float(payload["minor"]) / 1000.0
                 temp_c = round((temp_f - 32) * 5 / 9, 1)
@@ -210,6 +239,10 @@ class RaptBridge:
                 rssi = None
                 mac = ""
                 uuid_str = ""
+                tx_power = None
+                is_pro = False
+                calibrated = False
+                tilt_timestamp = None
             else:
                 return
 
@@ -232,6 +265,10 @@ class RaptBridge:
                 "tiltColor": color,
                 "tiltBeer": beer,
                 "tiltUuid": uuid_str,
+                "txPower": tx_power,
+                "isProModel": is_pro,
+                "calibrated": calibrated,
+                "tiltTimestamp": tilt_timestamp,
                 "_last_seen": datetime.now().isoformat(),
                 "_stale": False,
                 "_source": "mqtt",
