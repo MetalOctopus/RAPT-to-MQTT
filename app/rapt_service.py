@@ -218,10 +218,10 @@ class RaptBridge:
                 rssi = payload.get("rssi")
                 mac = payload.get("mac", "")
                 uuid_str = payload.get("uuid", "")
-                tx_power = None
-                is_pro = False
-                calibrated = False
-                tilt_timestamp = None
+                tx_power = payload.get("tx_power")
+                is_pro = payload.get("is_pro", False)
+                calibrated = payload.get("calibrated", False)
+                tilt_timestamp = payload.get("timestamp")
             # Raw iBeacon format (major/minor) — backward compat from upgraded flow
             # or from stock TiltPi. If we're getting enriched per-colour messages,
             # skip the flat topic duplicate to avoid a phantom "tilt-unknown" device.
