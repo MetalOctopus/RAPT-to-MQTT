@@ -1793,8 +1793,31 @@ async function autoPopulateBrewChart(brew, forceRebuild) {
 
   const scales = {
     x: { type: "time", time: { tooltipFormat: "MMM d, yyyy HH:mm:ss", displayFormats: { minute: "HH:mm", hour: "HH:mm", day: "MMM d", week: "MMM d", month: "MMM yyyy" } },
-         ticks: { color: "#8b949e", maxTicksLimit: 12, major: { enabled: true }, font: ctx => ctx.tick && ctx.tick.major ? { weight: "bold", size: 11 } : { size: 10 },
-                   callback: function(val, idx, ticks) { const d = new Date(val); const hm = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); if (ticks[idx] && ticks[idx].major) { const mon = d.toLocaleString("en",{month:"short"}); return [mon + " " + d.getDate(), hm]; } return hm; } }, grid: { color: "#21262d" } },
+         ticks: { color: "#8b949e", maxTicksLimit: 12, major: { enabled: true },
+                  font: ctx => ctx.tick && ctx.tick.major ? { weight: "bold", size: 11 } : { size: 10 },
+                  callback: function(val, idx, ticks) {
+                    const d = new Date(val);
+                    const hm = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+                    if (ticks[idx] && ticks[idx].major) {
+                      const mon = d.toLocaleString("en",{month:"short"});
+                      return [hm, mon + " " + d.getDate()];
+                    }
+                    return [hm, ""];
+                  }
+         },
+         grid: {
+           color: function(ctx) {
+             const d = new Date(ctx.tick.value);
+             if (d.getHours() === 0 && d.getMinutes() === 0) return "rgba(139,148,158,0.4)";
+             return "#21262d";
+           },
+           lineWidth: function(ctx) {
+             const d = new Date(ctx.tick.value);
+             if (d.getHours() === 0 && d.getMinutes() === 0) return 2;
+             return 1;
+           }
+         }
+    },
     y: { position: "left", grace: "10%", title: { display: true, text: "Temperature (\u00b0C)", color: "#8b949e" },
          ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
   };
