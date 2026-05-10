@@ -341,6 +341,67 @@
         </div>
       </div>
 
+      <!-- Legendary Stats (completed brews only) -->
+      <div id="legendary-stats-panel" class="panel" style="display:none">
+        <h2>Brew Summary</h2>
+        <div class="device-grid" id="legendary-stats-grid">
+          <div class="device-card primary">
+            <div class="card-label">Original Gravity</div>
+            <div class="card-value" id="legendary-og">--</div>
+          </div>
+          <div class="device-card primary">
+            <div class="card-label">Final Gravity</div>
+            <div class="card-value" id="legendary-fg">--</div>
+          </div>
+          <div class="device-card primary">
+            <div class="card-label">ABV</div>
+            <div class="card-value" id="legendary-abv">--</div>
+          </div>
+          <div class="device-card">
+            <div class="card-label">Brew Time</div>
+            <div class="card-value" id="legendary-brew-time">--</div>
+          </div>
+          <div class="device-card">
+            <div class="card-label">Target Temp</div>
+            <div class="card-value" id="legendary-target-temp">--</div>
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <div class="device-grid" style="grid-template-columns: 1fr 1fr">
+            <div class="device-card">
+              <div class="card-label">Hydrometer</div>
+              <div class="card-value" id="legendary-tilt" style="font-size:1em">--</div>
+            </div>
+            <div class="device-card">
+              <div class="card-label">Controller</div>
+              <div class="card-value" id="legendary-ctrl" style="font-size:1em">--</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Legendary Notes (completed brews only) -->
+      <div id="legendary-notes-panel" class="panel" style="display:none">
+        <h2>Rating &amp; Notes</h2>
+        <div style="margin-bottom:16px">
+          <label style="display:block;margin-bottom:6px">Rating</label>
+          <div class="legendary-stars" id="legendary-rating-stars" data-brew-id=""></div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group" style="grid-column:1/-1">
+            <label for="legendary-tasting-notes">Tasting Notes</label>
+            <textarea id="legendary-tasting-notes" rows="3" placeholder="What did it taste like? Aroma, mouthfeel, flavour..."></textarea>
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label for="legendary-brewer-notes">Brewer Notes (what you'd change next time)</label>
+            <textarea id="legendary-brewer-notes" rows="3" placeholder="What would you do differently? Fermentation tweaks, ingredient changes..."></textarea>
+          </div>
+        </div>
+        <div class="btn-row" style="margin-top:12px">
+          <button class="btn-save" onclick="saveLegendaryNotes()">Save Notes</button>
+        </div>
+      </div>
+
       <!-- Device Configuration -->
       <div class="panel" id="brew-device-config">
         <h2>Devices &amp; Configuration <button class="inline-edit-btn" id="btn-toggle-device-config">change</button></h2>
@@ -386,7 +447,7 @@
         </div>
       </div>
 
-      <div class="device-grid" id="brew-tiles">
+      <div class="device-grid" id="brew-detail-tiles">
         <div class="device-card primary brew-needs-tilt">
           <div class="card-label">Beer Temp</div>
           <div class="card-value" id="brew-beer-temp">--</div>
@@ -407,6 +468,10 @@
           <div class="card-label">OG <button class="inline-edit-btn" onclick="editBrewOG()">edit</button></div>
           <div class="card-value" id="brew-og-display">--</div>
           <div id="brew-og-hint" class="card-hint" style="display:none"></div>
+        </div>
+        <div class="device-card" id="brew-fg-card" style="display:none">
+          <div class="card-label">FG</div>
+          <div class="card-value" id="brew-fg-display">--</div>
         </div>
         <div class="device-card brew-needs-ctrl">
           <div class="card-label">Fridge Target</div>
@@ -436,7 +501,7 @@
       </div>
 
       <!-- Gauge Dashboard -->
-      <div class="gauge-dashboard">
+      <div class="gauge-dashboard" id="gauge-dashboard">
         <div class="panel gauge-panel">
           <h2 class="gauge-title">Fermentation</h2>
           <div id="gauge-fermentation" class="gauge-el"></div>
@@ -460,17 +525,17 @@
         </div>
       </div>
 
-      <!-- Brew Chart (persistent) -->
-      <div class="panel">
+      <!-- Brew Chart — shown as plain panel for active, accordion for completed -->
+      <div class="panel" id="brew-chart-panel-active">
         <h2>Fermentation Chart</h2>
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+        <div id="brew-chart-active-controls" style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
           <button id="btn-brew-chart-range" class="btn-save btn-sm" onclick="toggleBrewChartRange()">Show: Last 24h</button>
           <button id="btn-brew-filter" class="btn-save btn-sm">Filter: ON</button>
         </div>
         <div class="chart-container">
           <canvas id="brew-chart"></canvas>
         </div>
-        <details class="accordion" style="margin-top:8px">
+        <details class="accordion" id="brew-chart-extra-series" style="margin-top:8px">
           <summary>Add Extra Series</summary>
           <div class="accordion-body" style="padding-top:8px">
             <div class="chart-controls">
@@ -496,6 +561,13 @@
           </div>
         </details>
       </div>
+
+      <details class="accordion" id="brew-chart-panel-completed" style="display:none">
+        <summary>Fermentation Chart</summary>
+        <div class="accordion-body" id="brew-chart-completed-body">
+          <p class="help-text" style="margin-bottom:8px">Fermentation temperature and gravity data recorded during this brew.</p>
+        </div>
+      </details>
 
       <!-- Temperature Profile (accordion — advanced) -->
       <details class="accordion brew-needs-ctrl" id="profile-panel">
@@ -659,9 +731,9 @@
       </details>
 
       <!-- Brew Log (text-based) -->
-      <div class="panel">
+      <div class="panel" id="brew-log-panel">
         <h2>Brew Log</h2>
-        <div class="btn-row" style="margin-bottom:12px">
+        <div class="btn-row" id="brew-log-add-event-row" style="margin-bottom:12px">
           <button class="btn-save brewmaster-only" onclick="openAddEventModal()">Add Event</button>
         </div>
         <div id="brew-events-list" class="brew-log-text"></div>
@@ -700,6 +772,17 @@
         <h3>Edit Brew Notes</h3>
         <input type="hidden" id="legendary-edit-id">
         <div class="form-grid">
+          <div class="form-group">
+            <label for="legendary-edit-og">OG</label>
+            <input type="number" id="legendary-edit-og" step="0.001" min="0.990" max="1.200" placeholder="e.g. 1.050">
+          </div>
+          <div class="form-group">
+            <label for="legendary-edit-fg">FG</label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="number" id="legendary-edit-fg" step="0.001" min="0.990" max="1.160" placeholder="e.g. 1.010" style="flex:1">
+              <button type="button" onclick="suggestLegendaryFG()" class="btn-sm">Suggest FG</button>
+            </div>
+          </div>
           <div class="form-group" style="grid-column:1/-1">
             <label for="legendary-edit-tasting">Tasting Notes</label>
             <textarea id="legendary-edit-tasting" rows="3" placeholder="What did it taste like? Aroma, mouthfeel, flavour..."></textarea>

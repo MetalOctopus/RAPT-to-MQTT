@@ -18,6 +18,12 @@ class RaptBridge:
     TILT_TOPIC = "TiltPi"
     TILT_TOPIC_WILDCARD = "TiltPi/#"
 
+    # Map iBeacon UUID color bytes to TILT color names
+    TILT_UUID_COLORS = {
+        "10": "Red", "20": "Green", "30": "Black", "40": "Purple",
+        "50": "Orange", "60": "Blue", "70": "Yellow", "80": "Pink",
+    }
+
     def __init__(self, config, logger, history=None):
         self._config = config
         self._logger = logger
@@ -68,6 +74,21 @@ class RaptBridge:
         if not self._history:
             return
         known = self._history.get_known_devices()
+
+        # Clean up phantom "tilt-unknown" if a proper tilt-{color} device exists.
+        # This happens when iBeacon-format messages slip through before the enriched
+        # flow data arrives (startup race condition).
+        has_named_tilt = any(
+            kd["device_id"].startswith("tilt-") and kd["device_id"] != "tilt-unknown"
+            for kd in known
+        )
+        if has_named_tilt:
+            phantoms = [kd for kd in known if kd["device_id"] == "tilt-unknown"]
+            for p in phantoms:
+                self._history.forget_device(p["device_id"])
+                self._logger.info("Cleaned up phantom 'tilt-unknown' device (proper Tilt device exists).")
+            known = [kd for kd in known if kd["device_id"] != "tilt-unknown"]
+
         with self._devices_lock:
             for kd in known:
                 device_id = kd["device_id"]
@@ -226,20 +247,36 @@ class RaptBridge:
             # or from stock TiltPi. If we're getting enriched per-colour messages,
             # skip the flat topic duplicate to avoid a phantom "tilt-unknown" device.
             elif "major" in payload and "minor" in payload:
-                if msg.topic == self.TILT_TOPIC and any(
-                    d.get("txPower") is not None for d in self._devices.values()
-                    if d.get("deviceType") == "TILT"
-                ):
-                    return  # enriched flow is active, skip flat duplicate
+                if msg.topic == self.TILT_TOPIC:
+                    # Skip if any proper tilt-{color} device already exists
+                    # (in-memory OR in DB) — prevents startup race creating tilt-unknown
+                    has_named_tilt = any(
+                        did.startswith("tilt-") and did != "tilt-unknown"
+                        for did in self._devices
+                    )
+                    if not has_named_tilt and self._history:
+                        known = self._history.get_known_devices()
+                        has_named_tilt = any(
+                            kd["device_id"].startswith("tilt-") and kd["device_id"] != "tilt-unknown"
+                            for kd in known
+                        )
+                    if has_named_tilt:
+                        return  # enriched/legacy flow is active, skip flat duplicate
+
+                # Try to extract color from UUID (iBeacon includes it)
+                uuid_str = payload.get("uuid", "")
+                color = "Unknown"
+                if uuid_str and uuid_str.startswith("a495bb") and len(uuid_str) >= 8:
+                    color_byte = uuid_str[6:8]
+                    color = self.TILT_UUID_COLORS.get(color_byte, "Unknown")
+
                 temp_f = float(payload["major"])
                 sg = float(payload["minor"]) / 1000.0
                 temp_c = round((temp_f - 32) * 5 / 9, 1)
-                color = "Unknown"
                 beer = ""
-                rssi = None
-                mac = ""
-                uuid_str = ""
-                tx_power = None
+                rssi = payload.get("rssi")
+                mac = payload.get("mac", "")
+                tx_power = payload.get("tx_power")
                 is_pro = False
                 calibrated = False
                 tilt_timestamp = None

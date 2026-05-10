@@ -2145,3 +2145,41 @@ code {
 #brew-lineage-links a:hover {
   text-decoration: underline;
 }
+
+/* --- Legendary Stats (completed brew detail) --- */
+#legendary-stats-panel .device-grid {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+#legendary-stats-panel .device-card.primary .card-value {
+  color: #e6a817;
+}
+#legendary-notes-panel textarea {
+  width: 100%;
+  background: #0d1117;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 0.9em;
+  resize: vertical;
+}
+#legendary-notes-panel textarea:focus {
+  outline: none;
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 2px #58a6ff33;
+}
+#legendary-notes-panel .legendary-stars {
+  margin-bottom: 4px;
+}
+#legendary-notes-panel .legendary-stars .star {
+  font-size: 1.6em;
+  color: #30363d;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+#legendary-notes-panel .legendary-stars .star.filled {
+  color: #e6a817;
+}
+#legendary-notes-panel .legendary-stars:hover .star { color: #e6a817; }
+#legendary-notes-panel .legendary-stars .star:hover ~ .star { color: #30363d; }

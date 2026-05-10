@@ -240,6 +240,63 @@ class BrewSession:
         self._history.add_event(session_id, event_type, description)
         self._logger.info(f"Brew event: {event_type} - {description}")
 
+    def detect_fg(self, session_id):
+        """Auto-detect FG from hydrometer data as the lowest stabilized SG reading.
+
+        Looks at the last 24h of SG data from the Tilt hydrometer assigned to
+        this brew. Returns the median of the bottom 10% of readings to filter
+        out noise spikes, or None if no hydrometer data is available.
+        """
+        # Try active session first, then fall back to DB
+        session = self._active_sessions.get(session_id)
+        if not session:
+            session_json = self._history.get_session(session_id)
+            if session_json:
+                session = json.loads(session_json)
+        if not session:
+            return None
+
+        tilt_id = session.get("tilt_device_id")
+        if not tilt_id:
+            return None
+
+        # Query SG data from brew start to now
+        started = session.get("started_at")
+        if not started:
+            return None
+        brew_start = datetime.fromisoformat(started).timestamp()
+
+        data = self._history.query(tilt_id, "specificGravity", start=brew_start, limit=100000)
+        if not data:
+            return None
+
+        # Filter out physically impossible SG readings (e.g. when Tilt is removed
+        # from fermenter, readings go wild — 0.93, 1.87, etc.).  Valid beer SG sits
+        # roughly in the 0.990-1.160 range.
+        SG_MIN, SG_MAX = 0.990, 1.160
+        values = [d["value"] for d in data if d["value"] and SG_MIN <= d["value"] <= SG_MAX]
+        if len(values) < 5:
+            return None
+
+        # Use the last 24h of readings to find the stabilized FG.
+        # If fermentation is done, SG will have plateaued at the bottom.
+        last_24h_cutoff = time.time() - 86400
+        recent = [d["value"] for d in data if d["timestamp"] >= last_24h_cutoff and d["value"] and SG_MIN <= d["value"] <= SG_MAX]
+
+        if len(recent) >= 5:
+            # Enough recent data — use median of recent readings (should be stable)
+            recent_sorted = sorted(recent)
+            mid = len(recent_sorted) // 2
+            fg = recent_sorted[mid]
+        else:
+            # Not enough recent data — fall back to bottom 10% of all readings
+            values_sorted = sorted(values)
+            bottom_count = max(3, len(values_sorted) // 10)
+            bottom = values_sorted[:bottom_count]
+            fg = sorted(bottom)[len(bottom) // 2]
+
+        return round(fg, 4)
+
     def complete_brew(self, session_id, fg=None, notes=""):
         session = self._active_sessions.get(session_id)
         if not session:
@@ -248,10 +305,34 @@ class BrewSession:
         self._stop_feedback(session_id)
         session["status"] = "completed"
         session["completed_at"] = datetime.now().isoformat()
+
+        # Snapshot device names so they persist even if devices are removed later
+        devices = self._bridge.devices
+        tilt_id = session.get("tilt_device_id")
+        if tilt_id and tilt_id in devices:
+            d = devices[tilt_id]
+            session["tilt_name"] = d.get("_nickname") or d.get("name", "Hydrometer")
+        ctrl_id = session.get("controller_device_id")
+        if ctrl_id and ctrl_id in devices:
+            d = devices[ctrl_id]
+            session["controller_name"] = d.get("_nickname") or d.get("name", "Controller")
+
+        # Auto-detect FG from hydrometer if not manually provided
         if fg is not None:
             session["fg"] = fg
+        else:
+            auto_fg = self.detect_fg(session_id)
+            if auto_fg is not None:
+                session["fg"] = auto_fg
+                fg = auto_fg
+                self._logger.info(f"Auto-detected FG: {fg:.4f} from hydrometer data")
+
         if notes:
             session["notes"] = (session.get("notes", "") + "\n" + notes).strip()
+
+        # Calculate final ABV if we have both OG and FG
+        if session.get("og") and session.get("fg"):
+            session["current_abv"] = round((session["og"] - session["fg"]) * 131.25, 2)
 
         self._history.save_session(session["id"], json.dumps(session))
         self._history.add_event(session["id"], "brew_completed", f"FG: {fg}")
