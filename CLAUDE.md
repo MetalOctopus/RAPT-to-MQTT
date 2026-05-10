@@ -40,7 +40,7 @@ HomeAssistant/
 ```
 
 ## Key Conventions
-- Push to main directly (no feature branches)
+- Branching: dev for development, merge to main for releases. Push to main triggers Docker build via GitHub Actions.
 - Temperatures: Celsius first, e.g. "20.0°C (68°F)"
 - Specific gravity: decimal format, e.g. 1.025 not 1025. Use `fmtG()` helper in JS. Supports SG/Plato toggle via config (`gravity_unit`).
 - Round all device API values to 1 decimal (RAPT returns e.g. 17.4999904632568)
@@ -76,6 +76,18 @@ P-only cascaded servo control. Do NOT add I or D terms — 5-min sample rate + h
 - Docker registry: ghcr.io/metaloctopus/rapt-to-mqtt
 - Unraid server: 192.168.0.250 (reachable from dev machine, can curl/ping)
 
+## Repo Visibility
+This is a PUBLIC repo. Anyone can see the code. Keep this in mind when committing.
+- Ko-fi donations: ko-fi.com/metaloctopus (configured in .github/FUNDING.yml)
+- GHCR images are public (no auth needed to pull)
+
+## FG Auto-Detection
+`detect_fg()` in brew_session.py finds stabilized FG from Tilt hydrometer history. Filters to valid SG range (0.990-1.160) to exclude noise from removed hydrometers. Uses median of last 24h if 5+ readings, otherwise median of bottom 10%. API: `GET /api/brews/<id>/suggest-fg`. FG/OG editable on Legendary Brews via the notes endpoint with ABV recalculation.
+
+## Tilt iBeacon Handling
+TiltPi publishes two messages per reading: enriched on `TiltPi/{Color}` and backward-compat iBeacon on flat `TiltPi`. Guard in rapt_service.py prevents phantom `tilt-unknown` devices via UUID-based color extraction and startup cleanup.
+
 ## Testing
 No test suite yet. Verify by running `docker compose up` and checking the web UI at :8099.
 The running instance is accessible at http://192.168.0.250:8099/ — use curl for API checks.
+Can build locally: `docker build --build-arg BUILD_VERSION=0.XX -t rapt2mqtt:test .` and test on port 8199.
