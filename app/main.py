@@ -512,7 +512,28 @@ def get_brew_detail(session_id):
     # Fall back to completed/cancelled brews from database
     session_json = history.get_session(session_id)
     if session_json:
-        return jsonify(json.loads(session_json))
+        s = json.loads(session_json)
+        # Include events for completed/cancelled brews (active brews get these via get_brew_status)
+        s["events"] = history.get_events(session_id)
+        s["reminders"] = history.get_reminders(session_id)
+        # Resolve device names from the bridge (or use stored names)
+        devices = bridge.devices
+        tilt_id = s.get("tilt_device_id")
+        if tilt_id and tilt_id in devices:
+            d = devices[tilt_id]
+            s["tilt_name"] = d.get("_nickname") or d.get("name", "Hydrometer")
+        elif tilt_id:
+            s.setdefault("tilt_name", tilt_id)
+        ctrl_id = s.get("controller_device_id")
+        if ctrl_id and ctrl_id in devices:
+            d = devices[ctrl_id]
+            s["controller_name"] = d.get("_nickname") or d.get("name", "Controller")
+        elif ctrl_id:
+            s.setdefault("controller_name", ctrl_id)
+        # Compute ABV from OG/FG if not stored
+        if s.get("og") and s.get("fg") and not s.get("current_abv"):
+            s["current_abv"] = round((s["og"] - s["fg"]) * 131.25, 2)
+        return jsonify(s)
     return jsonify({"error": "Brew not found"}), 404
 
 
@@ -581,6 +602,13 @@ def update_brew_session(session_id):
         return jsonify(session)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/brews/<session_id>/suggest-fg", methods=["GET"])
+def suggest_fg(session_id):
+    """Auto-detect FG from hydrometer data for this brew."""
+    fg = brew.detect_fg(session_id)
+    return jsonify({"fg": fg})
 
 
 @app.route("/api/brews/<session_id>/complete", methods=["POST"])
@@ -978,8 +1006,21 @@ def update_brew_notes(session_id):
             # Also update in-memory session so active brews don't overwrite on next save
             if session_id in brew._active_sessions:
                 brew._active_sessions[session_id][field] = data[field]
+    # Allow editing OG and FG on completed brews, with ABV recalculation
+    if "og" in data and data["og"] is not None:
+        try:
+            s["og"] = round(float(data["og"]), 4)
+        except (ValueError, TypeError):
+            pass
+    if "fg" in data and data["fg"] is not None:
+        try:
+            s["fg"] = round(float(data["fg"]), 4)
+        except (ValueError, TypeError):
+            pass
+    if s.get("og") and s.get("fg"):
+        s["current_abv"] = round((s["og"] - s["fg"]) * 131.25, 2)
     history.save_session(session_id, json.dumps(s))
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "og": s.get("og"), "fg": s.get("fg"), "current_abv": s.get("current_abv")})
 
 
 BREW_PHOTO_DIR = os.path.join(CONFIG_DIR, "brew_photos")

@@ -1020,6 +1020,8 @@ async function loadBrewDetail(sessionId) {
 function renderBrewDetail(b) {
   document.getElementById("brew-detail-name").textContent = b.name || "Untitled Brew";
 
+  const isCompleted = b.status === "completed" || b.status === "cancelled";
+
   const statusBadge = document.getElementById("brew-status-badge");
   if (b.status === "active") {
     statusBadge.textContent = "Active";
@@ -1063,77 +1065,193 @@ function renderBrewDetail(b) {
     el.style.display = hasCtrl ? "" : "none";
   });
 
-  // Cold crash button: enable only if controller assigned and brew active
-  const coldCrashBtn = document.getElementById("btn-cold-crash");
-  if (coldCrashBtn) {
-    coldCrashBtn.disabled = !hasCtrl || b.status !== "active";
-  }
-  const noCtrlHint = document.querySelector(".brew-no-ctrl-hint");
-  if (noCtrlHint) noCtrlHint.style.display = (!hasCtrl && b.status === "active") ? "" : "none";
-
-  // Gauges: show/hide based on gear
-  const gaugeBeer = document.querySelector("#gauge-beer-temp")?.closest(".gauge-panel");
-  const gaugeSG = document.querySelector("#gauge-sg")?.closest(".gauge-panel");
-  const gaugeFridge = document.querySelector("#gauge-fridge")?.closest(".gauge-panel");
-  if (gaugeBeer) gaugeBeer.style.display = hasTilt ? "" : "none";
-  if (gaugeSG) gaugeSG.style.display = hasTilt ? "" : "none";
-  if (gaugeFridge) gaugeFridge.style.display = hasCtrl ? "" : "none";
-
-  // Smart feedback needs both Tilt + Controller
-  const fbPanel = document.getElementById("feedback-panel");
-  if (fbPanel) fbPanel.style.display = (hasTilt && hasCtrl) ? "" : "none";
-
-  // Manual reading panel: show when missing Tilt (no auto SG/temp)
+  // --- Completed brew: legendary view ---
+  const gaugeDashboard = document.getElementById("gauge-dashboard");
+  const legendaryStats = document.getElementById("legendary-stats-panel");
+  const legendaryNotes = document.getElementById("legendary-notes-panel");
+  const brewTiles = document.getElementById("brew-detail-tiles");
+  const brewActionsBar = document.getElementById("brew-actions-bar");
   const manualPanel = document.getElementById("manual-reading-panel");
-  if (manualPanel) {
-    manualPanel.style.display = (!hasTilt && b.status === "active") ? "" : "none";
-    // Show temp field if no controller either
-    const manualTempGroup = document.getElementById("manual-temp-group");
-    if (manualTempGroup) manualTempGroup.style.display = hasCtrl ? "none" : "";
-  }
+  const chartPanelActive = document.getElementById("brew-chart-panel-active");
+  const chartPanelCompleted = document.getElementById("brew-chart-panel-completed");
+  const brewDeviceConfig = document.getElementById("brew-device-config");
+  const brewLogAddEvent = document.getElementById("brew-log-add-event-row");
 
-  const days = daysSince(b.started_at);
-  document.getElementById("brew-detail-duration").textContent = `Day ${Math.floor(days)} (${formatSeconds(days * 86400)})`;
+  if (isCompleted) {
+    // Hide active-brew-only elements
+    if (gaugeDashboard) gaugeDashboard.style.display = "none";
+    if (brewTiles) brewTiles.style.display = "none";
+    if (brewActionsBar) brewActionsBar.style.display = "none";
+    if (manualPanel) manualPanel.style.display = "none";
+    if (chartPanelActive) chartPanelActive.style.display = "none";
+    if (chartPanelCompleted) chartPanelCompleted.style.display = "";
+    if (brewDeviceConfig) brewDeviceConfig.style.display = "none";
+    if (brewLogAddEvent) brewLogAddEvent.style.display = "none";
+    const fbPanel = document.getElementById("feedback-panel");
+    if (fbPanel) fbPanel.style.display = "none";
 
-  // Beer temp from live data
-  const beerTemp = b.beer_temp;
-  document.getElementById("brew-beer-temp").textContent = beerTemp != null ? formatTemp(beerTemp, "C") : "--";
-  document.getElementById("brew-fridge-temp").textContent = b.fridge_temp != null ? formatTemp(b.fridge_temp, "C") : "--";
-  document.getElementById("brew-sg").textContent = fmtG(b.current_sg);
-  document.getElementById("brew-abv").textContent = b.current_abv != null ? b.current_abv.toFixed(1) + "%" : "--";
+    // Show legendary stats
+    if (legendaryStats) {
+      legendaryStats.style.display = "";
+      const computedAbv = b.current_abv != null ? b.current_abv
+        : (b.og && b.fg) ? Math.round((b.og - b.fg) * 131.25 * 10) / 10
+        : null;
+      document.getElementById("legendary-og").textContent = fmtG(b.og);
+      document.getElementById("legendary-fg").textContent = fmtG(b.fg);
+      document.getElementById("legendary-abv").textContent = computedAbv != null ? computedAbv.toFixed(1) + "%" : "--";
 
-  const og = b.og;
-  document.getElementById("brew-og-display").textContent = fmtG(og);
-  document.getElementById("brew-target-display").textContent = b.target_beer_temp != null ? formatTemp(b.target_beer_temp, "C") : "--";
-  document.getElementById("brew-fridge-target").textContent = b.controller_target != null ? formatTemp(b.controller_target, "C") : "--";
-
-  // Device config summary
-  const sourceLabels = { hydrometer: "Hydrometer (in-liquid)", controller: "Controller (fridge air)", mean: "Mean of both" };
-  document.getElementById("brew-cfg-tilt").textContent = b.tilt_name || "None";
-  document.getElementById("brew-cfg-ctrl").textContent = b.controller_name || "None";
-  document.getElementById("brew-cfg-source").textContent = sourceLabels[b.temp_source] || "Hydrometer (in-liquid)";
-
-  // ABV under gauge
-  const abvText = b.current_abv != null ? b.current_abv.toFixed(1) + "% ABV" : "-- ABV";
-  document.getElementById("gauge-abv-display").textContent = abvText;
-
-  // OG hint: if current SG > OG, suggest updating
-  if (og && b.current_sg && b.current_sg > og) {
-    const hint = document.getElementById("brew-og-hint");
-    hint.style.display = "block";
-    hint.textContent = `SG reading ${fmtG(b.current_sg)} > OG ${fmtG(og)} -- update OG?`;
-    hint.style.cursor = "pointer";
-    hint.onclick = () => {
-      if (confirm(`Update OG to ${fmtG(b.current_sg)}?`)) {
-        updateBrewField(b.id, "og", b.current_sg);
+      // Brew time
+      if (b.started_at && b.completed_at) {
+        const startMs = new Date(b.started_at).getTime();
+        const endMs = new Date(b.completed_at).getTime();
+        const brewDays = Math.floor((endMs - startMs) / 86400000);
+        document.getElementById("legendary-brew-time").textContent = brewDays + (brewDays === 1 ? " day" : " days");
+      } else {
+        document.getElementById("legendary-brew-time").textContent = "--";
       }
-    };
-  } else {
-    document.getElementById("brew-og-hint").style.display = "none";
-  }
 
-  // Needle gauge
-  updateNeedleGauge(b);
+      // Target temp (or temp profile summary)
+      const profile = b.temp_profile;
+      if (profile && profile.steps && profile.steps.length > 1) {
+        const temps = profile.steps.map(s => s.temp);
+        const minT = Math.min(...temps);
+        const maxT = Math.max(...temps);
+        document.getElementById("legendary-target-temp").textContent = formatTemp(minT, "C") + " - " + formatTemp(maxT, "C");
+      } else if (b.target_beer_temp != null) {
+        document.getElementById("legendary-target-temp").textContent = formatTemp(b.target_beer_temp, "C");
+      } else {
+        document.getElementById("legendary-target-temp").textContent = "--";
+      }
+
+      // Devices
+      document.getElementById("legendary-tilt").textContent = b.tilt_name || (b.tilt_device_id ? b.tilt_device_id : "None");
+      document.getElementById("legendary-ctrl").textContent = b.controller_name || (b.controller_device_id ? b.controller_device_id : "None");
+    }
+
+    // Duration for completed brews
+    if (b.started_at && b.completed_at) {
+      const startMs = new Date(b.started_at).getTime();
+      const endMs = new Date(b.completed_at).getTime();
+      const brewDays = Math.floor((endMs - startMs) / 86400000);
+      const dateStr = new Date(b.started_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+      const endStr = new Date(b.completed_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+      document.getElementById("brew-detail-duration").textContent = `${dateStr} \u2014 ${endStr} (${brewDays} day${brewDays !== 1 ? 's' : ''})`;
+    } else {
+      const days = daysSince(b.started_at);
+      document.getElementById("brew-detail-duration").textContent = `Day ${Math.floor(days)} (${formatSeconds(days * 86400)})`;
+    }
+
+    // Show legendary notes panel
+    if (legendaryNotes) {
+      legendaryNotes.style.display = "";
+      const ratingStars = document.getElementById("legendary-rating-stars");
+      ratingStars.setAttribute("data-brew-id", b.id);
+      ratingStars.innerHTML = renderStars(b.rating || 0);
+      document.getElementById("legendary-tasting-notes").value = b.tasting_notes || "";
+      document.getElementById("legendary-brewer-notes").value = b.brewing_notes || "";
+    }
+
+    // Move chart canvas into completed accordion
+    moveChartToCompletedAccordion();
+
+  } else {
+    // Active brew: show normal elements, hide legendary panels
+    if (gaugeDashboard) gaugeDashboard.style.display = "";
+    if (brewTiles) brewTiles.style.display = "";
+    if (brewActionsBar) brewActionsBar.style.display = "";
+    if (chartPanelActive) chartPanelActive.style.display = "";
+    if (chartPanelCompleted) chartPanelCompleted.style.display = "none";
+    if (brewDeviceConfig) brewDeviceConfig.style.display = "";
+    if (brewLogAddEvent) brewLogAddEvent.style.display = "";
+    if (legendaryStats) legendaryStats.style.display = "none";
+    if (legendaryNotes) legendaryNotes.style.display = "none";
+
+    // Restore chart canvas to active panel if it was moved
+    restoreChartToActivePanel();
+
+    // Cold crash button: enable only if controller assigned and brew active
+    const coldCrashBtn = document.getElementById("btn-cold-crash");
+    if (coldCrashBtn) {
+      coldCrashBtn.disabled = !hasCtrl || b.status !== "active";
+    }
+    const noCtrlHint = document.querySelector(".brew-no-ctrl-hint");
+    if (noCtrlHint) noCtrlHint.style.display = (!hasCtrl && b.status === "active") ? "" : "none";
+
+    // Gauges: show/hide based on gear
+    const gaugeBeer = document.querySelector("#gauge-beer-temp")?.closest(".gauge-panel");
+    const gaugeSGPanel = document.querySelector("#gauge-sg")?.closest(".gauge-panel");
+    const gaugeFridge = document.querySelector("#gauge-fridge")?.closest(".gauge-panel");
+    if (gaugeBeer) gaugeBeer.style.display = hasTilt ? "" : "none";
+    if (gaugeSGPanel) gaugeSGPanel.style.display = hasTilt ? "" : "none";
+    if (gaugeFridge) gaugeFridge.style.display = hasCtrl ? "" : "none";
+
+    // Smart feedback needs both Tilt + Controller
+    const fbPanel = document.getElementById("feedback-panel");
+    if (fbPanel) fbPanel.style.display = (hasTilt && hasCtrl) ? "" : "none";
+
+    // Manual reading panel: show when missing Tilt (no auto SG/temp)
+    if (manualPanel) {
+      manualPanel.style.display = (!hasTilt && b.status === "active") ? "" : "none";
+      const manualTempGroup = document.getElementById("manual-temp-group");
+      if (manualTempGroup) manualTempGroup.style.display = hasCtrl ? "none" : "";
+    }
+
+    const days = daysSince(b.started_at);
+    document.getElementById("brew-detail-duration").textContent = `Day ${Math.floor(days)} (${formatSeconds(days * 86400)})`;
+
+    // Beer temp from live data
+    const beerTemp = b.beer_temp;
+    document.getElementById("brew-beer-temp").textContent = beerTemp != null ? formatTemp(beerTemp, "C") : "--";
+    document.getElementById("brew-fridge-temp").textContent = b.fridge_temp != null ? formatTemp(b.fridge_temp, "C") : "--";
+    document.getElementById("brew-sg").textContent = fmtG(b.current_sg);
+    const computedAbv = b.current_abv != null ? b.current_abv
+      : (b.og && b.fg) ? Math.round((b.og - b.fg) * 131.25 * 10) / 10
+      : null;
+    document.getElementById("brew-abv").textContent = computedAbv != null ? computedAbv.toFixed(1) + "%" : "--";
+
+    const og = b.og;
+    document.getElementById("brew-og-display").textContent = fmtG(og);
+    const fgCard = document.getElementById("brew-fg-card");
+    const fgDisplay = document.getElementById("brew-fg-display");
+    if (fgCard && fgDisplay) {
+      if (b.fg != null) {
+        fgCard.style.display = "";
+        fgDisplay.textContent = fmtG(b.fg);
+      } else {
+        fgCard.style.display = "none";
+      }
+    }
+    document.getElementById("brew-target-display").textContent = b.target_beer_temp != null ? formatTemp(b.target_beer_temp, "C") : "--";
+    document.getElementById("brew-fridge-target").textContent = b.controller_target != null ? formatTemp(b.controller_target, "C") : "--";
+
+    // Device config summary
+    const sourceLabels = { hydrometer: "Hydrometer (in-liquid)", controller: "Controller (fridge air)", mean: "Mean of both" };
+    document.getElementById("brew-cfg-tilt").textContent = b.tilt_name || "None";
+    document.getElementById("brew-cfg-ctrl").textContent = b.controller_name || "None";
+    document.getElementById("brew-cfg-source").textContent = sourceLabels[b.temp_source] || "Hydrometer (in-liquid)";
+
+    // ABV under gauge
+    const abvText = computedAbv != null ? computedAbv.toFixed(1) + "% ABV" : "-- ABV";
+    document.getElementById("gauge-abv-display").textContent = abvText;
+
+    // OG hint: if current SG > OG, suggest updating
+    if (og && b.current_sg && b.current_sg > og) {
+      const hint = document.getElementById("brew-og-hint");
+      hint.style.display = "block";
+      hint.textContent = `SG reading ${fmtG(b.current_sg)} > OG ${fmtG(og)} -- update OG?`;
+      hint.style.cursor = "pointer";
+      hint.onclick = () => {
+        if (confirm(`Update OG to ${fmtG(b.current_sg)}?`)) {
+          updateBrewField(b.id, "og", b.current_sg);
+        }
+      };
+    } else {
+      document.getElementById("brew-og-hint").style.display = "none";
+    }
+
+    // Needle gauge
+    updateNeedleGauge(b);
+  }
 
   // Temperature profile
   renderProfileDesigner(b);
@@ -1160,6 +1278,73 @@ function renderBrewDetail(b) {
 
   // Load legendary profile dropdown for active brews
   if (b.status === "active") loadLegendaryProfileDropdown();
+}
+
+// Move the brew chart canvas into the completed accordion
+function moveChartToCompletedAccordion() {
+  const completedBody = document.getElementById("brew-chart-completed-body");
+  const chartCanvas = document.getElementById("brew-chart");
+  if (!completedBody || !chartCanvas) return;
+  // Only move if not already there
+  if (chartCanvas.closest("#brew-chart-completed-body")) return;
+  const chartContainer = chartCanvas.closest(".chart-container");
+  if (chartContainer) {
+    completedBody.appendChild(chartContainer);
+  }
+}
+
+// Restore the brew chart canvas back to the active panel
+function restoreChartToActivePanel() {
+  const activePanel = document.getElementById("brew-chart-panel-active");
+  const chartCanvas = document.getElementById("brew-chart");
+  if (!activePanel || !chartCanvas) return;
+  // Only move if not already there
+  if (chartCanvas.closest("#brew-chart-panel-active")) return;
+  const chartContainer = chartCanvas.closest(".chart-container");
+  if (chartContainer) {
+    // Insert after the controls div
+    const controlsDiv = document.getElementById("brew-chart-active-controls");
+    if (controlsDiv) {
+      controlsDiv.after(chartContainer);
+    } else {
+      activePanel.appendChild(chartContainer);
+    }
+  }
+}
+
+// Resize chart when completed accordion opens (Chart.js needs visible container)
+(function() {
+  const acc = document.getElementById("brew-chart-panel-completed");
+  if (acc) {
+    acc.addEventListener("toggle", function() {
+      if (acc.open) {
+        const sid = currentBrewId;
+        if (sid && brewCharts[sid]) {
+          setTimeout(() => brewCharts[sid].resize(), 50);
+        }
+      }
+    });
+  }
+})();
+
+// Save legendary notes (rating is saved via star clicks; this saves text fields)
+async function saveLegendaryNotes() {
+  const brewId = currentBrewId;
+  if (!brewId) return;
+  const updates = {
+    tasting_notes: document.getElementById("legendary-tasting-notes").value,
+    brewing_notes: document.getElementById("legendary-brewer-notes").value,
+  };
+  try {
+    await fetch(`/api/brews/${brewId}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    showToast("Notes saved", "success");
+  } catch (e) {
+    showToast("Failed to save notes", "error");
+  }
 }
 
 async function renderLineageLinks(b) {
@@ -2363,7 +2548,28 @@ async function saveBrewRecipe() {
 /* Brew action buttons */
 document.getElementById("btn-complete-brew").addEventListener("click", async () => {
   if (!currentBrewId) return;
-  const fgRaw = prompt("Enter Final Gravity (e.g. 1.010) or leave blank:");
+
+  // Try to auto-detect FG from hydrometer data
+  let suggestedFg = null;
+  try {
+    const res = await fetch(`/api/brews/${currentBrewId}/suggest-fg`);
+    if (res.ok) {
+      const suggestion = await res.json();
+      suggestedFg = suggestion.fg;
+    }
+  } catch (e) { /* ignore — will fall back to blank prompt */ }
+
+  let fgRaw;
+  if (suggestedFg != null) {
+    fgRaw = prompt(
+      `Final Gravity detected from hydrometer: ${suggestedFg.toFixed(4)}\n\nAccept this value, enter a different FG, or leave blank:`,
+      suggestedFg.toFixed(4)
+    );
+  } else {
+    fgRaw = prompt("Enter Final Gravity (e.g. 1.010) or leave blank:");
+  }
+  if (fgRaw === null) return; // user pressed Cancel — abort completion
+
   const data = {};
   if (fgRaw) data.fg = parseFloat(fgRaw);
   try {
@@ -3216,7 +3422,11 @@ async function rateBrew(el, rating) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ rating })
     });
-    loadLegendaryBrews();
+    // Re-render stars immediately for visual feedback
+    el.parentElement.innerHTML = renderStars(rating);
+    el.parentElement.setAttribute("data-brew-id", brewId);
+    // Refresh legendary list if visible
+    if (currentPage === "legendary") loadLegendaryBrews();
   } catch (e) {}
 }
 
@@ -3226,11 +3436,28 @@ async function editLegendaryBrew(brewId) {
     const b = brew.find(x => x.id === brewId);
     if (!b) return;
     document.getElementById("legendary-edit-id").value = brewId;
+    document.getElementById("legendary-edit-og").value = b.og || "";
+    document.getElementById("legendary-edit-fg").value = b.fg || "";
     document.getElementById("legendary-edit-tasting").value = b.tasting_notes || "";
     document.getElementById("legendary-edit-recipe").value = b.recipe || "";
     document.getElementById("legendary-edit-brewing").value = b.brewing_notes || "";
     document.getElementById("legendary-edit-modal").style.display = "";
   } catch (e) {}
+}
+
+async function suggestLegendaryFG() {
+  const brewId = document.getElementById("legendary-edit-id").value;
+  if (!brewId) return;
+  try {
+    const res = await fetch(`/api/brews/${brewId}/suggest-fg`);
+    const data = await res.json();
+    if (data.fg) {
+      document.getElementById("legendary-edit-fg").value = data.fg;
+      showToast("FG suggested: " + fmtG(data.fg), "success");
+    } else {
+      showToast("No hydrometer data available to suggest FG", "warning");
+    }
+  } catch (e) { showToast("Failed to suggest FG", "error"); }
 }
 
 function closeLegendaryEdit() {
@@ -3241,11 +3468,15 @@ async function saveLegendaryEdit() {
   const brewId = document.getElementById("legendary-edit-id").value;
   const recipePhotoInput = document.getElementById("legendary-edit-photo");
   const brewPhotoInput = document.getElementById("legendary-edit-brew-photo");
+  const ogVal = document.getElementById("legendary-edit-og").value;
+  const fgVal = document.getElementById("legendary-edit-fg").value;
   const updates = {
     tasting_notes: document.getElementById("legendary-edit-tasting").value,
     recipe: document.getElementById("legendary-edit-recipe").value,
     brewing_notes: document.getElementById("legendary-edit-brewing").value,
   };
+  if (ogVal) updates.og = parseFloat(ogVal);
+  if (fgVal) updates.fg = parseFloat(fgVal);
   try {
     await fetch(`/api/brews/${brewId}/notes`, {
       method: "POST",
@@ -3266,7 +3497,9 @@ async function saveLegendaryEdit() {
     }
     closeLegendaryEdit();
     loadLegendaryBrews();
-    showToast("Brew notes saved", "success");
+    // Refresh brew detail page if viewing this brew
+    if (currentPage === "brew-detail" && currentBrewId === brewId) loadBrewDetail(brewId);
+    showToast("Brew updated", "success");
   } catch (e) { showToast("Failed to save", "error"); }
 }
 
