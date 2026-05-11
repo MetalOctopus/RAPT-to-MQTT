@@ -1488,9 +1488,6 @@ code {
   .integration-grid {
     grid-template-columns: 1fr;
   }
-  .donate-tiers {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* --- Affiliate hint --- */
@@ -1640,83 +1637,9 @@ code {
 }
 
 /* --- Support / Donate Page --- */
-.support-breakdown {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-  margin-top: 12px;
-}
-.support-item {
-  background: #161b22;
-  border: 1px solid #21262d;
-  border-radius: 6px;
-  padding: 16px;
-}
-.support-item strong {
-  color: #e6edf3;
-  display: block;
-  margin-bottom: 6px;
-}
-.support-item p {
-  color: #8b949e;
-  font-size: 0.9em;
-}
-.donate-tiers {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-  margin-top: 12px;
-}
-.donate-tier {
-  background: #161b22;
-  border: 1px solid #21262d;
-  border-radius: 8px;
-  padding: 20px;
-  text-align: center;
-}
-.donate-tier.featured {
-  border-color: #e6a817;
-  background: #1c1e0f;
-}
-.donate-tier-name {
-  color: #e6edf3;
-  font-weight: bold;
-  font-size: 1.1em;
-  margin-bottom: 4px;
-}
-.donate-tier-price {
-  color: #58a6ff;
-  font-size: 1.8em;
-  font-weight: bold;
-  margin-bottom: 8px;
-}
-.donate-tier p {
-  color: #8b949e;
-  font-size: 0.9em;
-  margin-bottom: 12px;
-}
-.donate-btn {
-  width: 100%;
-  text-decoration: none;
-  text-align: center;
-  box-sizing: border-box;
-}
 .integration-fund {
   text-decoration: none;
   text-align: center;
-}
-.fund-total {
-  text-align: center;
-  padding: 20px 0;
-}
-.fund-amount {
-  font-size: 3em;
-  font-weight: bold;
-  color: #2ea043;
-}
-.fund-label {
-  color: #8b949e;
-  font-size: 1.1em;
 }
 
 /* --- TiltPi Management --- */
