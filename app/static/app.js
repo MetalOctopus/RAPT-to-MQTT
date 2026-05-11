@@ -3152,13 +3152,6 @@ function applyAffiliateVisibility() {
   });
 }
 
-/* --- Dummy fund/donate buttons --- */
-document.addEventListener("click", (e) => {
-  if (e.target.classList.contains("integration-fund") || e.target.classList.contains("donate-btn")) {
-    e.preventDefault();
-    showToast("Payment integration coming soon! Check GitHub to sponsor.", "success");
-  }
-});
 
 /* --- Device Management --- */
 let editingDeviceId = null;

@@ -1697,6 +1697,13 @@ code {
 }
 .donate-btn {
   width: 100%;
+  text-decoration: none;
+  text-align: center;
+  box-sizing: border-box;
+}
+.integration-fund {
+  text-decoration: none;
+  text-align: center;
 }
 .fund-total {
   text-align: center;
