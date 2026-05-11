@@ -20,8 +20,11 @@
 
 - Polls the [RAPT API](https://api.rapt.io) for your temperature controllers and publishes readings to MQTT
 - Subscribes to MQTT commands so you can set target temperatures from Home Assistant
+- **Home Assistant auto-discovery** — toggle one switch, sensors appear in HA automatically (no HACS needed)
 - Integrates [Tilt Hydrometers](https://tilthydrometer.com/) via TiltPi for gravity tracking
 - Tracks brew sessions with fermentation charts, brew logs, and smart temperature feedback
+- **Temperature profiles** — create, save, and apply multi-step fermentation schedules
+- **Brew notifications** — all brew events published to MQTT for phone push via HA automations
 - Stores completed brews as "Legendary Brews" with stats, ratings, and tasting notes
 - Single-page web UI on port 8099 — no app install needed
 
@@ -78,7 +81,7 @@ On first launch, open `http://your-server:8099` and enter:
 | **MQTT Port** | Broker port (default: 1883) |
 | **MQTT Username/Password** | Broker credentials (if required) |
 
-All settings can also be passed as environment variables: `RAPT_EMAIL`, `RAPT_SECRET`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `POLL_INTERVAL`.
+All settings can also be passed as environment variables: `RAPT_EMAIL`, `RAPT_SECRET`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `POLL_INTERVAL`, `HA_DISCOVERY_ENABLED`, `HA_DISCOVERY_PREFIX`, `NOTIFICATION_LEVEL`.
 
 ## MQTT Topics
 
@@ -87,16 +90,32 @@ All settings can also be passed as environment variables: `RAPT_EMAIL`, `RAPT_SE
 | `RAPT/temperatureController` | Published | Temperature readings and device state |
 | `RAPT/temperatureController/Command` | Subscribed | Set target temperature |
 | `TiltPi` | Published | Tilt Hydrometer gravity and temperature |
-| `RAPT2MQTT/notify` | Published | System notifications |
+| `RAPT2MQTT/notify` | Published | Brew event notifications |
+| `rapt2mqtt/{device_id}/state` | Published | HA discovery state (retained) |
+| `rapt2mqtt/{device_id}/set_target` | Subscribed | HA target temperature command |
+| `rapt2mqtt/status` | Published | Bridge availability LWT (online/offline) |
 
 ## Home Assistant Integration
 
-A companion HACS integration (**BEER2MQTT**) is in development that auto-discovers your devices and creates Home Assistant entities. See the [HomeAssistant](HomeAssistant/) directory for details.
+### Auto-Discovery (built in)
+
+Enable "Home Assistant Discovery" in RAPT2MQTT's config page (or set `HA_DISCOVERY_ENABLED=true`). Your devices will appear automatically in Home Assistant's MQTT integration — no HACS installation needed.
+
+Entities created per RAPT controller: temperature, target, heating/cooling status, RSSI, and a target temperature slider. Per Tilt hydrometer: temperature, gravity, RSSI.
+
+See the **Home Assistant** page in the RAPT2MQTT web UI for setup instructions, automation YAML for phone notifications, and example template sensors.
+
+### BEER2MQTT (HACS — optional)
+
+A companion HACS integration that adds brew session entities (beer name, current SG, ABV, days fermenting) beyond what native discovery provides. See the [HomeAssistant](HomeAssistant/) directory for details.
 
 ## Features
 
+- **Home Assistant Auto-Discovery** — Toggle one switch, all your devices appear as HA entities with availability tracking
 - **Brew Sessions** — Track active fermentations with OG, target temp, and real-time charts
+- **Temperature Profiles** — Create and save multi-step fermentation schedules, apply to any brew
 - **Smart Temperature Feedback** — P-controller that adjusts your RAPT controller based on actual vs target fermentation temperature
+- **Brew Notifications** — Every brew event (start, dry hop, cold crash, completion) published to MQTT for phone push
 - **Legendary Brews** — Completed brews are archived with stats (OG, FG, ABV, brew time), fermentation charts, ratings, and tasting notes
 - **Tilt Hydrometer Support** — Gravity readings via TiltPi integration
 - **Gravity Units** — Toggle between Specific Gravity and Plato
