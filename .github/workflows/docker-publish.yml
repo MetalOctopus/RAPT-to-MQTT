@@ -42,7 +42,7 @@ jobs:
 
       - name: Calculate version from commit count
         id: version
-        run: echo "version=0.$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(git rev-list --count HEAD | awk '{printf "%.2f", $1 * 0.01}')" >> "$GITHUB_OUTPUT"
 
       - uses: docker/build-push-action@v6
         with:
