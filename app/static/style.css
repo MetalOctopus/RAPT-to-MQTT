@@ -1207,47 +1207,38 @@ code {
   margin: 8px 0 12px;
 }
 
-/* --- Temperature Profile --- */
-.profile-timeline {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
+/* --- Temperature Profiles --- */
+#profile-library {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+#profile-builder {
+  margin-top: 16px;
+}
+
+/* --- YAML Blocks (HA Setup) --- */
+.yaml-block {
+  background: #161b22;
+  border: 1px solid #21262d;
   border-radius: 8px;
-  padding: 8px;
-  margin-bottom: 12px;
-  min-height: 40px;
-  user-select: none;
-  -webkit-user-select: none;
+  padding: 16px;
+  margin: 12px 0;
 }
-.profile-timeline svg { cursor: crosshair; }
-.profile-timeline .profile-step-dot { cursor: grab; }
-.profile-timeline .profile-step-dot:active { cursor: grabbing; }
-.profile-timeline .profile-drag-label {
-  pointer-events: none;
-  font-size: 10px;
-  font-weight: 600;
-  fill: #f0883e;
+
+.yaml-block pre {
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre;
 }
-.profile-timeline .profile-click-hint {
-  pointer-events: none;
-  font-size: 9px;
-  fill: #8b949e;
+
+.yaml-block code {
+  color: #e6edf3;
+  font-size: 0.85em;
+  line-height: 1.5;
 }
-.profile-steps-table { display: flex; flex-direction: column; gap: 2px; }
-.profile-step-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 10px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.03);
-}
-.profile-step-row.active {
-  background: rgba(46,160,67,0.12);
-  border-left: 3px solid #2ea043;
-}
-.profile-step-day { color: #8b949e; min-width: 65px; font-size: 13px; }
-.profile-step-temp { color: #2ea043; font-weight: 600; min-width: 55px; font-size: 14px; }
-.profile-step-label { color: #c9d1d9; flex: 1; font-size: 13px; }
 
 /* --- Reminders --- */
 .reminder-form {

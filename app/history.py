@@ -1,9 +1,11 @@
 """Time-series history storage using SQLite."""
 
+import json
 import os
 import sqlite3
 import threading
 import time
+import uuid
 from datetime import datetime
 
 from app.config import CONFIG_DIR
@@ -89,6 +91,15 @@ class HistoryStore:
                     last_state TEXT,
                     last_seen REAL NOT NULL,
                     created_at REAL NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS temp_profiles (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    steps TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
                 )
             """)
 
@@ -329,3 +340,92 @@ class HistoryStore:
         with self._lock:
             with self._connect() as conn:
                 conn.execute("DELETE FROM known_devices WHERE device_id = ?", (device_id,))
+
+    # --- Temperature profiles ---
+
+    def save_profile(self, name, steps, profile_id=None):
+        """Upsert a temperature profile. Returns the profile id."""
+        now = time.time()
+        if profile_id is None:
+            profile_id = str(uuid.uuid4())[:8]
+        with self._lock:
+            with self._connect() as conn:
+                existing = conn.execute(
+                    "SELECT created_at FROM temp_profiles WHERE id = ?",
+                    (profile_id,)
+                ).fetchone()
+                if existing:
+                    conn.execute(
+                        """UPDATE temp_profiles
+                           SET name = ?, steps = ?, updated_at = ?
+                           WHERE id = ?""",
+                        (name, json.dumps(steps), now, profile_id)
+                    )
+                else:
+                    conn.execute(
+                        """INSERT INTO temp_profiles
+                           (id, name, steps, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (profile_id, name, json.dumps(steps), now, now)
+                    )
+        return profile_id
+
+    def get_profile(self, profile_id):
+        """Return a single temperature profile as a dict, or None."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id, name, steps, created_at, updated_at FROM temp_profiles WHERE id = ?",
+                (profile_id,)
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "steps": json.loads(row["steps"]),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def list_profiles(self):
+        """Return all temperature profiles ordered by name."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, name, steps, created_at, updated_at FROM temp_profiles ORDER BY name"
+            ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "steps": json.loads(r["steps"]),
+                "created_at": r["created_at"],
+                "updated_at": r["updated_at"],
+            }
+            for r in rows
+        ]
+
+    def delete_profile(self, profile_id):
+        """Delete a temperature profile."""
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM temp_profiles WHERE id = ?", (profile_id,))
+
+    def update_profile(self, profile_id, name=None, steps=None):
+        """Update specific fields of a temperature profile. Returns True if found."""
+        now = time.time()
+        with self._lock:
+            with self._connect() as conn:
+                fields = ["updated_at = ?"]
+                params = [now]
+                if name is not None:
+                    fields.append("name = ?")
+                    params.append(name)
+                if steps is not None:
+                    fields.append("steps = ?")
+                    params.append(json.dumps(steps))
+                params.append(profile_id)
+                cursor = conn.execute(
+                    f"UPDATE temp_profiles SET {', '.join(fields)} WHERE id = ?",
+                    params
+                )
+                return cursor.rowcount > 0

@@ -42,6 +42,11 @@
     </div>
 
     <div class="nav-section">
+      <div class="nav-label">Temperature</div>
+      <a class="nav-item" data-page="profiles" href="#">Temperature Profiles</a>
+    </div>
+
+    <div class="nav-section">
       <div class="nav-label">Devices</div>
       <a class="nav-item" data-page="devices" href="#">Device Management</a>
       <div id="device-list" class="device-list">
@@ -65,6 +70,7 @@
       <a class="nav-item active" data-page="config" href="#">MQTT Config</a>
       <a class="nav-item" data-page="dashboard" href="#">Dashboard</a>
       <a class="nav-item" data-page="integrations" href="#">Integrations</a>
+      <a class="nav-item" data-page="ha-setup" href="#">Home Assistant</a>
       <a class="nav-item" data-page="help" href="#">Help</a>
       <a class="nav-item" data-page="about" href="#">About</a>
     </div>
@@ -117,6 +123,34 @@
           <div class="form-group">
             <label for="notification_topic">Notification MQTT Topic</label>
             <input type="text" id="notification_topic" placeholder="RAPT2MQTT/notify">
+          </div>
+          <div class="form-row" style="margin-top:16px;border-top:1px solid #21262d;padding-top:16px">
+            <h3 style="margin:0 0 12px">Home Assistant</h3>
+          </div>
+          <div class="form-row">
+            <div class="form-group checkbox-group">
+              <input type="checkbox" id="ha_discovery_enabled">
+              <label for="ha_discovery_enabled">Enable MQTT Auto-Discovery</label>
+              <p class="help-text">Automatically creates sensors in Home Assistant via MQTT discovery.</p>
+            </div>
+          </div>
+          <div class="form-row" id="ha-prefix-row" style="display:none">
+            <div class="form-group">
+              <label for="ha_discovery_prefix">Discovery Prefix</label>
+              <input type="text" id="ha_discovery_prefix" value="homeassistant" placeholder="homeassistant">
+              <p class="help-text">Only change if you customized HA's discovery prefix.</p>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="notification_level">Notification Level</label>
+              <select id="notification_level">
+                <option value="all">All Events</option>
+                <option value="important">Important Only</option>
+                <option value="off">Off</option>
+              </select>
+              <p class="help-text">Controls which brew events publish to MQTT for phone notifications.</p>
+            </div>
           </div>
           <div class="form-group checkbox-group">
             <input type="checkbox" id="auto_start" checked>
@@ -570,41 +604,17 @@
       </details>
 
       <!-- Temperature Profile (accordion — advanced) -->
-      <details class="accordion brew-needs-ctrl" id="profile-panel">
-        <summary>Temperature Profile</summary>
-        <div class="accordion-body">
-          <p class="help-text" style="margin-bottom:12px">Design a multi-step fermentation schedule. The system automatically advances through each step and sets the controller target. Works with or without smart feedback.</p>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-            <label for="load-legendary-profile" style="white-space:nowrap;font-size:0.85em;color:#8b949e">Load from Legendary Brew:</label>
-            <select id="load-legendary-profile" style="flex:1;max-width:300px" onchange="loadLegendaryProfile()">
-              <option value="">-- Select a brew --</option>
-            </select>
+        <div id="brew-profile-display" class="panel" style="display:none">
+          <h3>Temperature Profile</h3>
+          <div id="brew-profile-chart-wrap" style="height:200px;margin-bottom:12px">
+            <canvas id="brew-profile-chart"></canvas>
           </div>
-          <div id="profile-timeline" class="profile-timeline"></div>
-          <div id="profile-steps-list"></div>
-          <div class="profile-add-step" style="margin-top:12px">
-            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
-              <div class="form-group" style="flex:0 0 80px">
-                <label for="profile-step-day">Start Day</label>
-                <input type="number" id="profile-step-day" min="0" step="0.5" placeholder="0" style="width:100%">
-              </div>
-              <div class="form-group" style="flex:0 0 80px">
-                <label for="profile-step-temp">Temp (°C)</label>
-                <input type="number" id="profile-step-temp" min="0" max="35" step="0.5" placeholder="18" style="width:100%">
-              </div>
-              <div class="form-group" style="flex:1;min-width:120px">
-                <label for="profile-step-label">Label</label>
-                <input type="text" id="profile-step-label" placeholder="e.g. Primary, Diacetyl rest, Cold crash" style="width:100%">
-              </div>
-              <button class="btn-save" onclick="addProfileStep()" style="white-space:nowrap">Add Step</button>
-            </div>
-          </div>
-          <div class="btn-row" style="margin-top:12px;gap:8px">
-            <button class="btn-save" onclick="saveProfile()">Save Profile</button>
-            <button class="btn-stop" onclick="clearProfile()">Clear Profile</button>
+          <div id="brew-profile-steps"></div>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <a href="#" onclick="showPage('profiles');return false" class="btn-secondary">Edit in Temperature Profiles</a>
+            <button class="btn-secondary" onclick="saveBrewProfileAsTemplate()">Save as Template</button>
           </div>
         </div>
-      </details>
 
       <!-- Smart Temp Feedback (accordion — advanced) -->
       <details class="accordion" id="feedback-panel">
@@ -2046,6 +2056,166 @@
             <span class="integration-pct">--</span>
           </div>
           <a href="https://ko-fi.com/metaloctopus" target="_blank" rel="noopener" class="btn-save integration-fund">Request</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Temperature Profiles Page -->
+    <div id="page-profiles" class="page">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h2>Temperature Profiles</h2>
+          <button class="btn-save" onclick="openProfileBuilder()">+ New Profile</button>
+        </div>
+        <p class="help-text">Create reusable temperature schedules and apply them to active brews.</p>
+      </div>
+      <div id="profile-library" class="integration-grid"></div>
+      <div id="profile-builder" class="panel" style="display:none">
+        <h2 id="profile-builder-title">New Profile</h2>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="profile-name">Profile Name</label>
+            <input type="text" id="profile-name" placeholder="e.g. Ale Fermentation">
+          </div>
+        </div>
+        <div id="profile-chart-wrap" style="height:220px;margin:16px 0">
+          <canvas id="profile-chart"></canvas>
+        </div>
+        <div id="profile-steps-table"></div>
+        <div class="form-row" style="margin-top:12px">
+          <div class="form-group" style="flex:1">
+            <label for="profile-add-day">Day</label>
+            <input type="number" id="profile-add-day" min="0" step="0.5" value="0" style="width:80px">
+          </div>
+          <div class="form-group" style="flex:1">
+            <label for="profile-add-temp">Temp (°C)</label>
+            <input type="number" id="profile-add-temp" min="0" max="35" step="0.5" value="18" style="width:80px">
+          </div>
+          <div class="form-group" style="flex:2">
+            <label for="profile-add-label">Label</label>
+            <input type="text" id="profile-add-label" placeholder="e.g. Primary Fermentation">
+          </div>
+          <div class="form-group" style="align-self:flex-end">
+            <button class="btn-save" onclick="addProfileBuilderStep()">Add Step</button>
+          </div>
+        </div>
+        <div class="form-row" style="margin-top:12px">
+          <div class="form-group">
+            <label for="load-profile-from-legendary">Load from Legendary Brew</label>
+            <select id="load-profile-from-legendary" onchange="loadLegendaryProfileForBuilder()">
+              <option value="">— Select a brew —</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:8px">
+          <button class="btn-save" onclick="saveProfileTemplate()">Save Profile</button>
+          <button class="btn-secondary" onclick="cancelProfileBuilder()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Home Assistant Setup Page -->
+    <div id="page-ha-setup" class="page">
+      <div class="panel">
+        <h2>Home Assistant Setup</h2>
+        <p>RAPT2MQTT can automatically create sensors in Home Assistant via MQTT discovery, or you can set them up manually.</p>
+      </div>
+      <div class="panel">
+        <h3>Option 1: Auto-Discovery (Recommended)</h3>
+        <p>Go to <a href="#" onclick="showPage('config');return false">MQTT Config</a> and enable <strong>MQTT Auto-Discovery</strong>. Restart the bridge. Your devices will appear in Home Assistant automatically.</p>
+        <p class="help-text">Requires the MQTT integration in Home Assistant with discovery enabled (the default).</p>
+        <h4 style="margin-top:16px">What gets created:</h4>
+        <ul class="help-list">
+          <li><strong>RAPT Controller:</strong> Fridge temperature, target temperature, cooling/heating status, signal strength, target temp slider</li>
+          <li><strong>Tilt Hydrometer:</strong> Beer temperature, specific gravity, signal strength</li>
+        </ul>
+        <p class="help-text" style="margin-top:12px">Forgetting a device in RAPT2MQTT automatically removes its sensors from Home Assistant.</p>
+      </div>
+      <div class="panel">
+        <h3>Option 2: Manual MQTT Sensors</h3>
+        <p>Add these to your Home Assistant <code>configuration.yaml</code>:</p>
+        <div class="yaml-block">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <strong>RAPT Controller Sensors</strong>
+            <button class="btn-secondary btn-sm" onclick="copyYaml(this)">Copy</button>
+          </div>
+          <pre><code>mqtt:
+  sensor:
+    - name: "Fermenter Temperature"
+      state_topic: "RAPT/temperatureController"
+      value_template: "{{ '{{' }} value_json.current_temp {{ '}}' }}"
+      unit_of_measurement: "°C"
+      device_class: temperature
+
+    - name: "Fermenter Target"
+      state_topic: "RAPT/temperatureController"
+      value_template: "{{ '{{' }} value_json.target_temp {{ '}}' }}"
+      unit_of_measurement: "°C"
+      device_class: temperature
+
+    - name: "Fermenter Mode"
+      state_topic: "RAPT/temperatureController"
+      value_template: &gt;
+        {{ '{%' }} if value_json.cooling_active {{ '%}' }}Cooling
+        {{ '{%' }} elif value_json.heating_active {{ '%}' }}Heating
+        {{ '{%' }} else {{ '%}' }}Idle{{ '{%' }} endif {{ '%}' }}</code></pre>
+        </div>
+        <div class="yaml-block">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <strong>Tilt Hydrometer Sensors</strong>
+            <button class="btn-secondary btn-sm" onclick="copyYaml(this)">Copy</button>
+          </div>
+          <pre><code>mqtt:
+  sensor:
+    - name: "Beer Temperature"
+      state_topic: "rapt2mqtt/tilt-blue/state"
+      value_template: "{{ '{{' }} value_json.temperature {{ '}}' }}"
+      unit_of_measurement: "°C"
+      device_class: temperature
+
+    - name: "Specific Gravity"
+      state_topic: "rapt2mqtt/tilt-blue/state"
+      value_template: "{{ '{{' }} value_json.specificGravity {{ '}}' }}"
+      unit_of_measurement: "SG"</code></pre>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Brew Notifications to Your Phone</h3>
+        <p>Push brew events to your phone via Home Assistant.</p>
+        <div class="yaml-block">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <strong>Notification Automation</strong>
+            <button class="btn-secondary btn-sm" onclick="copyYaml(this)">Copy</button>
+          </div>
+          <pre><code>automation:
+  - alias: "RAPT2MQTT Brew Notification"
+    trigger:
+      - platform: mqtt
+        topic: "RAPT2MQTT/notify"
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "{{ '{{' }} trigger.payload_json.title {{ '}}' }}"
+          message: "{{ '{{' }} trigger.payload_json.message {{ '}}' }}"</code></pre>
+        </div>
+        <p class="help-text">Replace <code>notify.mobile_app_your_phone</code> with your actual mobile app service name.</p>
+      </div>
+      <div class="panel">
+        <h3>Custom Template Sensors</h3>
+        <p>Build custom sensors from the available data.</p>
+        <div class="yaml-block">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <strong>ABV Calculator</strong>
+            <button class="btn-secondary btn-sm" onclick="copyYaml(this)">Copy</button>
+          </div>
+          <pre><code>template:
+  - sensor:
+      - name: "Estimated ABV"
+        state: &gt;
+          {{ '{{' }} ((states('sensor.original_gravity') | float -
+             states('sensor.specific_gravity') | float) * 131.25) | round(1) {{ '}}' }}
+        unit_of_measurement: "%"
+        icon: mdi:percent</code></pre>
         </div>
       </div>
     </div>

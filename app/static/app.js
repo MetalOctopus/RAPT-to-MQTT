@@ -92,6 +92,7 @@ function showPage(page, id) {
     if (page === "rapt-about") {} // static page, no loading needed
     if (page === "recipes") loadRecipesPage();
     if (page === "legendary") loadLegendaryBrews();
+    if (page === "profiles") loadProfiles();
   }
 }
 
@@ -247,6 +248,10 @@ async function loadConfig() {
     gravityUnit = cfg.gravity_unit || "sg";
     window._hideAffiliateLinks = !!cfg.hide_affiliate_links;
     applyAffiliateVisibility();
+    document.getElementById("ha_discovery_enabled").checked = cfg.ha_discovery_enabled || false;
+    document.getElementById("ha_discovery_prefix").value = cfg.ha_discovery_prefix || "homeassistant";
+    document.getElementById("notification_level").value = cfg.notification_level || "all";
+    document.getElementById("ha-prefix-row").style.display = cfg.ha_discovery_enabled ? "" : "none";
   } catch (e) { showToast("Failed to load config", "error"); }
 }
 
@@ -263,6 +268,9 @@ async function saveConfig() {
     auto_start: document.getElementById("auto_start").checked,
     hide_affiliate_links: document.getElementById("hide_affiliate_links").checked,
     gravity_unit: document.getElementById("gravity_unit").value,
+    ha_discovery_enabled: document.getElementById("ha_discovery_enabled").checked,
+    ha_discovery_prefix: document.getElementById("ha_discovery_prefix").value,
+    notification_level: document.getElementById("notification_level").value,
   };
   try {
     const res = await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
@@ -1254,7 +1262,7 @@ function renderBrewDetail(b) {
   }
 
   // Temperature profile
-  renderProfileDesigner(b);
+  renderBrewProfileReadonly(b);
 
   // Feedback explanation and live status
   renderFeedbackStatus(b);
@@ -1276,8 +1284,6 @@ function renderBrewDetail(b) {
   // Load feedback chart
   if (b.temp_feedback_enabled) loadFeedbackChart(b.id, true);
 
-  // Load legendary profile dropdown for active brews
-  if (b.status === "active") loadLegendaryProfileDropdown();
 }
 
 // Move the brew chart canvas into the completed accordion
@@ -1372,46 +1378,6 @@ async function renderLineageLinks(b) {
     container.innerHTML = "Lineage: " + links.join(", ");
     container.style.display = "";
   } catch (e) { container.style.display = "none"; }
-}
-
-async function loadLegendaryProfileDropdown() {
-  const sel = document.getElementById("load-legendary-profile");
-  if (!sel) return;
-  try {
-    const profiles = await (await fetch("/api/brews/legendary-profiles")).json();
-    sel.innerHTML = '<option value="">-- Select a brew --</option>';
-    profiles.forEach(p => {
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      const steps = (p.temp_profile.steps || []).length;
-      opt.textContent = `${p.name} (${steps} step${steps !== 1 ? 's' : ''})`;
-      sel.appendChild(opt);
-    });
-  } catch (e) {}
-}
-
-async function loadLegendaryProfile() {
-  const sel = document.getElementById("load-legendary-profile");
-  if (!sel || !sel.value) return;
-  try {
-    const profiles = await (await fetch("/api/brews/legendary-profiles")).json();
-    const match = profiles.find(p => p.id === sel.value);
-    if (!match || !match.temp_profile || !match.temp_profile.steps) return;
-    if (profileSteps.length > 0 && !confirm("Replace current profile steps with the profile from " + match.name + "?")) {
-      sel.value = "";
-      return;
-    }
-    profileSteps = JSON.parse(JSON.stringify(match.temp_profile.steps));
-    // Remove runtime state
-    profileSteps.forEach(s => { delete s._active; });
-    renderProfileSteps();
-    if (currentBrewId) {
-      const brew = await (await fetch(`/api/brews/${currentBrewId}`)).json();
-      renderProfileTimeline(brew);
-    }
-    showToast("Profile loaded from " + match.name, "success");
-    sel.value = "";
-  } catch (e) { showToast("Failed to load profile", "error"); }
 }
 
 let brewGauges = {};
@@ -2700,386 +2666,215 @@ function openAddEventModal() {
   };
 }
 
-/* --- Temperature Profile --- */
-let profileSteps = [];  // Working copy while editing
-let _profileBrew = null;  // Cached brew object for re-rendering
+/* --- Temperature Profiles Page --- */
+let _profileBuilderSteps = [];
+let _editingProfileId = null;
+let _profileChart = null;
 
-function renderProfileDesigner(brew) {
-  _profileBrew = brew;
-  const profile = brew.temp_profile || {};
-  const steps = profile.steps || [];
-  profileSteps = JSON.parse(JSON.stringify(steps));  // deep copy for editing
-
-  // Auto-open the accordion if there's an active profile
-  const panel = document.getElementById("profile-panel");
-  if (panel && steps.length) panel.open = true;
-
-  // Mark the active step
-  if (brew.started_at && profileSteps.length) {
-    const elapsed = (Date.now() - new Date(brew.started_at).getTime()) / 86400000;
-    const sorted = [...profileSteps].sort((a, b) => a.day - b.day);
-    let activeIdx = -1;
-    for (let i = 0; i < sorted.length; i++) {
-      if (elapsed >= sorted[i].day) activeIdx = i;
-    }
-    profileSteps.forEach(s => s._active = false);
-    if (activeIdx >= 0) sorted[activeIdx]._active = true;
-  }
-
-  renderProfileSteps();
-  renderProfileTimeline(brew);
-}
-
-function renderProfileSteps() {
-  const el = document.getElementById("profile-steps-list");
-  if (!profileSteps.length) {
-    el.innerHTML = '<div class="help-text" style="margin:8px 0">No steps defined. Add steps below or click the chart to place points.</div>';
-    return;
-  }
-  const sorted = [...profileSteps].sort((a, b) => a.day - b.day);
-  el.innerHTML = `<div class="profile-steps-table">
-    ${sorted.map((s, i) => `<div class="profile-step-row${s._active ? ' active' : ''}">
-      <span class="profile-step-day">Day ${s.day}${s.day % 1 !== 0 ? '' : '+'}</span>
-      <span class="profile-step-temp">${s.temp}°C</span>
-      <span class="profile-step-label">${esc(s.label || '')}</span>
-      <button class="brew-log-del-btn" onclick="removeProfileStep(${i})">x</button>
-    </div>`).join('')}
-  </div>`;
-}
-
-function _profileLayout(el) {
-  const w = el.clientWidth || 500;
-  const h = 200;
-  const pad = { l: 45, r: 15, t: 15, b: 30 };
-  const cw = w - pad.l - pad.r;
-  const ch = h - pad.t - pad.b;
-  return { w, h, pad, cw, ch };
-}
-
-function _profileScales(sorted, layout) {
-  const maxDay = Math.max(sorted[sorted.length - 1].day + 3, 14);
-  const minTemp = Math.min(...sorted.map(s => s.temp)) - 2;
-  const maxTemp = Math.max(...sorted.map(s => s.temp)) + 2;
-  const tempRange = maxTemp - minTemp || 1;
-  const { pad, cw, ch } = layout;
-  const xScale = (d) => pad.l + (d / maxDay) * cw;
-  const yScale = (t) => pad.t + ch - ((t - minTemp) / tempRange) * ch;
-  const xInv = (px) => ((px - pad.l) / cw) * maxDay;
-  const yInv = (py) => minTemp + ((pad.t + ch - py) / ch) * tempRange;
-  return { maxDay, minTemp, maxTemp, tempRange, xScale, yScale, xInv, yInv };
-}
-
-function _snapVal(v, step) { return Math.round(Math.round(v / step) * step * 10) / 10; }
-
-function renderProfileTimeline(brew) {
-  if (brew) _profileBrew = brew;
-  const el = document.getElementById("profile-timeline");
-  if (!profileSteps.length) {
-    // Show empty chart area with click hint
-    const layout = _profileLayout(el);
-    el.innerHTML = `<svg width="100%" height="${layout.h}" viewBox="0 0 ${layout.w} ${layout.h}" preserveAspectRatio="none">
-      <rect class="profile-bg-hit" x="${layout.pad.l}" y="${layout.pad.t}" width="${layout.cw}" height="${layout.ch}" fill="transparent"/>
-      <text x="${layout.w / 2}" y="${layout.h / 2}" fill="#484f58" font-size="11" text-anchor="middle">Click to add temperature steps</text>
-    </svg>`;
-    _attachProfileClickHandler(el, brew);
-    return;
-  }
-
-  const sorted = [...profileSteps].sort((a, b) => a.day - b.day);
-  const layout = _profileLayout(el);
-  const { w, h, pad } = layout;
-  const scales = _profileScales(sorted, layout);
-  const { maxDay, minTemp, tempRange, xScale, yScale } = scales;
-
-  // Find current day
-  let currentDay = 0;
-  if (brew && brew.started_at) {
-    currentDay = (Date.now() - new Date(brew.started_at).getTime()) / 86400000;
-  }
-
-  // Build stepped path
-  let path = '';
-  for (let i = 0; i < sorted.length; i++) {
-    const x = xScale(sorted[i].day);
-    const y = yScale(sorted[i].temp);
-    if (i === 0) path += `M${x},${y}`;
-    else path += `L${x},${y}`;
-    const nextDay = i < sorted.length - 1 ? sorted[i + 1].day : maxDay;
-    path += `L${xScale(nextDay)},${y}`;
-  }
-
-  // Fill path
-  let fillPath = path + `L${xScale(maxDay)},${yScale(minTemp)}L${xScale(0)},${yScale(minTemp)}Z`;
-
-  // Current day marker
-  const nowX = xScale(Math.min(currentDay, maxDay));
-
-  // Day gridlines
-  let gridLines = '';
-  for (let d = 0; d <= maxDay; d += Math.ceil(maxDay / 7)) {
-    const x = xScale(d);
-    gridLines += `<line x1="${x}" y1="${pad.t}" x2="${x}" y2="${h - pad.b}" stroke="#21262d"/>`;
-    gridLines += `<text x="${x}" y="${h - 5}" fill="#484f58" font-size="10" text-anchor="middle">Day ${d}</text>`;
-  }
-
-  // Temp labels
-  let tempLabels = '';
-  const tempSteps = Math.max(2, Math.ceil(tempRange / 5));
-  for (let i = 0; i <= tempSteps; i++) {
-    const t = minTemp + (i / tempSteps) * tempRange;
-    const y = yScale(t);
-    tempLabels += `<text x="${pad.l - 5}" y="${y + 3}" fill="#484f58" font-size="10" text-anchor="end">${t.toFixed(0)}°</text>`;
-    tempLabels += `<line x1="${pad.l}" y1="${y}" x2="${w - pad.r}" y2="${y}" stroke="#21262d" stroke-dasharray="2,2"/>`;
-  }
-
-  // Step labels on the chart
-  let stepLabels = '';
-  for (let i = 0; i < sorted.length; i++) {
-    const x = xScale(sorted[i].day) + 4;
-    const y = yScale(sorted[i].temp) - 6;
-    if (sorted[i].label) {
-      stepLabels += `<text x="${x}" y="${y}" fill="#c9d1d9" font-size="10" font-weight="600">${esc(sorted[i].label)}</text>`;
-    }
-  }
-
-  el.innerHTML = `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-    <rect class="profile-bg-hit" x="${pad.l}" y="${pad.t}" width="${layout.cw}" height="${layout.ch}" fill="transparent"/>
-    ${gridLines}${tempLabels}
-    <path d="${fillPath}" fill="rgba(46,160,67,0.1)" stroke="none"/>
-    <path d="${path}" fill="none" stroke="#2ea043" stroke-width="2"/>
-    ${stepLabels}
-    ${currentDay > 0 ? `<line x1="${nowX}" y1="${pad.t}" x2="${nowX}" y2="${h - pad.b}" stroke="#f0883e" stroke-width="1.5" stroke-dasharray="4,3"/>
-    <text x="${nowX}" y="${pad.t - 2}" fill="#f0883e" font-size="9" text-anchor="middle">now</text>` : ''}
-    ${sorted.map((s, i) => `<circle class="profile-step-dot" data-index="${i}" cx="${xScale(s.day)}" cy="${yScale(s.temp)}" r="6" fill="#2ea043" stroke="#0d1117" stroke-width="1.5"/>`).join('')}
-  </svg>`;
-
-  // Attach interaction handlers
-  _attachProfileClickHandler(el, brew);
-  _attachProfileDragHandlers(el, sorted, layout, scales, brew);
-}
-
-function _attachProfileClickHandler(el, brew) {
-  const svg = el.querySelector('svg');
-  if (!svg) return;
-  const bgRect = svg.querySelector('.profile-bg-hit');
-  if (!bgRect) return;
-
-  bgRect.addEventListener('click', function(e) {
-    // Don't trigger if we just finished a drag
-    if (_profileDragOccurred) { _profileDragOccurred = false; return; }
-
-    const svgEl = el.querySelector('svg');
-    const pt = svgEl.createSVGPoint();
-    pt.x = e.clientX;
-    pt.y = e.clientY;
-    const svgPt = pt.matrixTransform(svgEl.getScreenCTM().inverse());
-
-    // If no steps yet, use reasonable defaults for scale inversion
-    if (!profileSteps.length) {
-      const layout = _profileLayout(el);
-      const defaultMaxDay = 14;
-      const defaultMinTemp = 15;
-      const defaultMaxTemp = 25;
-      const defaultRange = defaultMaxTemp - defaultMinTemp;
-      const rawDay = ((svgPt.x - layout.pad.l) / layout.cw) * defaultMaxDay;
-      const rawTemp = defaultMinTemp + ((layout.pad.t + layout.ch - svgPt.y) / layout.ch) * defaultRange;
-      const day = Math.max(0, _snapVal(rawDay, 0.5));
-      const temp = _snapVal(rawTemp, 0.5);
-      profileSteps.push({ day, temp, label: '' });
-      profileSteps.sort((a, b) => a.day - b.day);
-      renderProfileSteps();
-      renderProfileTimeline(_profileBrew);
-      showToast(`Added step: Day ${day}, ${temp}°C`, 'success');
+async function loadProfiles() {
+  try {
+    const res = await fetch("/api/profiles");
+    const profiles = await res.json();
+    const grid = document.getElementById("profile-library");
+    if (!profiles.length) {
+      grid.innerHTML = '<div class="panel"><p class="help-text">No profiles yet. Create one to get started.</p></div>';
       return;
     }
-
-    const sorted = [...profileSteps].sort((a, b) => a.day - b.day);
-    const layout = _profileLayout(el);
-    const scales = _profileScales(sorted, layout);
-
-    const rawDay = scales.xInv(svgPt.x);
-    const rawTemp = scales.yInv(svgPt.y);
-    const day = Math.max(0, _snapVal(rawDay, 0.5));
-    const temp = _snapVal(rawTemp, 0.5);
-
-    // Check we're within chart bounds
-    if (svgPt.x < layout.pad.l || svgPt.x > layout.pad.l + layout.cw) return;
-    if (svgPt.y < layout.pad.t || svgPt.y > layout.pad.t + layout.ch) return;
-
-    profileSteps.push({ day, temp, label: '' });
-    profileSteps.sort((a, b) => a.day - b.day);
-    renderProfileSteps();
-    renderProfileTimeline(_profileBrew);
-    showToast(`Added step: Day ${day}, ${temp}°C`, 'success');
-  });
-}
-
-let _profileDragOccurred = false;
-
-function _attachProfileDragHandlers(el, sorted, layout, scales, brew) {
-  const svg = el.querySelector('svg');
-  if (!svg) return;
-  const dots = svg.querySelectorAll('.profile-step-dot');
-  const { pad } = layout;
-
-  // Build a map from sorted index to profileSteps index for reliable reference
-  const used = new Set();
-  const sortedToOrigIdx = sorted.map(s => {
-    const idx = profileSteps.findIndex((p, i) => {
-      if (used.has(i)) return false;
-      return p.day === s.day && p.temp === s.temp;
+    grid.innerHTML = profiles.map(p => {
+      const steps = p.steps || [];
+      const temps = steps.map(s => s.temp);
+      const maxDay = steps.length ? Math.max(...steps.map(s => s.day)) : 0;
+      const tempRange = temps.length ? Math.min(...temps) + "–" + Math.max(...temps) + "°C" : "—";
+      return '<div class="panel integration-card">' +
+        '<h3>' + esc(p.name) + '</h3>' +
+        '<p class="help-text">' + steps.length + ' step' + (steps.length !== 1 ? 's' : '') + ' · ' + tempRange + ' · ' + maxDay + ' days</p>' +
+        '<div style="height:100px;margin:8px 0"><canvas id="pc-' + p.id + '"></canvas></div>' +
+        '<div style="display:flex;gap:6px;margin-top:8px">' +
+        '<button class="btn-save btn-sm" onclick="editProfile(\'' + p.id + '\')">Edit</button>' +
+        '<button class="btn-secondary btn-sm" onclick="applyProfileToBrew(\'' + p.id + '\')">Apply to Brew</button>' +
+        '<button class="btn-secondary btn-sm" onclick="deleteProfile(\'' + p.id + '\')">Delete</button>' +
+        '</div></div>';
+    }).join("");
+    profiles.forEach(p => {
+      const c = document.getElementById("pc-" + p.id);
+      if (c) renderProfileMiniChart(c, p.steps || []);
     });
-    if (idx >= 0) used.add(idx);
-    return idx;
+  } catch (e) { console.error("loadProfiles:", e); }
+}
+
+function renderProfileMiniChart(canvas, steps) {
+  const sorted = [...steps].sort((a, b) => a.day - b.day);
+  if (!sorted.length) return;
+  new Chart(canvas, {
+    type: "line",
+    data: { datasets: [{ data: sorted.map(s => ({x: s.day, y: s.temp})), borderColor: "#2ea043", backgroundColor: "rgba(46,160,67,0.1)", fill: true, stepped: "before", pointRadius: 3, pointBackgroundColor: "#2ea043", borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { type: "linear", grid: { color: "#21262d" }, ticks: { color: "#8b949e", font: { size: 10 } } }, y: { grid: { color: "#21262d" }, ticks: { color: "#8b949e", font: { size: 10 } } } } }
   });
+}
 
-  dots.forEach(dot => {
-    let dragging = false;
-    let dragLabel = null;
-    let origIdx = -1;
+function renderProfileBuilderChart() {
+  const canvas = document.getElementById("profile-chart");
+  if (_profileChart) { _profileChart.destroy(); _profileChart = null; }
+  const sorted = [..._profileBuilderSteps].sort((a, b) => a.day - b.day);
+  if (!sorted.length) return;
+  _profileChart = new Chart(canvas, {
+    type: "line",
+    data: { datasets: [{ label: "Temperature", data: sorted.map(s => ({x: s.day, y: s.temp})), borderColor: "#2ea043", backgroundColor: "rgba(46,160,67,0.15)", fill: true, stepped: "before", pointRadius: 5, pointBackgroundColor: "#2ea043", pointHoverRadius: 7, borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "Day " + ctx.parsed.x + ": " + ctx.parsed.y + "°C" } } }, scales: { x: { type: "linear", title: { display: true, text: "Day", color: "#8b949e" }, grid: { color: "#21262d" }, ticks: { color: "#8b949e" } }, y: { title: { display: true, text: "°C", color: "#8b949e" }, grid: { color: "#21262d" }, ticks: { color: "#8b949e" } } } }
+  });
+}
 
-    const onPointerDown = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dragging = true;
-      _profileDragOccurred = false;
-      const sortIdx = parseInt(dot.getAttribute('data-index'));
-      origIdx = sortedToOrigIdx[sortIdx];
+function renderProfileBuilderSteps() {
+  const el = document.getElementById("profile-steps-table");
+  if (!_profileBuilderSteps.length) { el.innerHTML = '<p class="help-text">No steps yet. Add one below.</p>'; return; }
+  const sorted = [..._profileBuilderSteps].sort((a, b) => a.day - b.day);
+  el.innerHTML = '<table style="width:100%;border-collapse:collapse"><tr style="color:#8b949e;font-size:0.85em"><th style="text-align:left;padding:4px">Day</th><th style="text-align:left;padding:4px">Temp</th><th style="text-align:left;padding:4px">Label</th><th></th></tr>' +
+    sorted.map((s, i) => '<tr style="border-top:1px solid #21262d"><td style="padding:6px 4px">' + s.day + '</td><td style="padding:6px 4px;color:#2ea043;font-weight:bold">' + s.temp + '°C</td><td style="padding:6px 4px">' + esc(s.label || "") + '</td><td style="padding:6px 4px;text-align:right"><button class="btn-secondary btn-sm" onclick="removeProfileBuilderStep(' + i + ')">×</button></td></tr>').join("") +
+    '</table>';
+}
 
-      dot.style.cursor = 'grabbing';
-      dot.setAttribute('r', '8');
+function addProfileBuilderStep() {
+  const day = parseFloat(document.getElementById("profile-add-day").value) || 0;
+  const temp = parseFloat(document.getElementById("profile-add-temp").value) || 18;
+  const label = document.getElementById("profile-add-label").value.trim();
+  _profileBuilderSteps.push({day, temp, label});
+  _profileBuilderSteps.sort((a, b) => a.day - b.day);
+  renderProfileBuilderSteps();
+  renderProfileBuilderChart();
+  document.getElementById("profile-add-label").value = "";
+}
 
-      // Create floating label
-      dragLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      dragLabel.setAttribute('class', 'profile-drag-label');
-      dragLabel.setAttribute('text-anchor', 'middle');
-      svg.appendChild(dragLabel);
+function removeProfileBuilderStep(index) {
+  const sorted = [..._profileBuilderSteps].sort((a, b) => a.day - b.day);
+  sorted.splice(index, 1);
+  _profileBuilderSteps = sorted;
+  renderProfileBuilderSteps();
+  renderProfileBuilderChart();
+}
 
-      dot.setPointerCapture(e.pointerId);
-      dot.addEventListener('pointermove', onPointerMove);
-      dot.addEventListener('pointerup', onPointerUp);
-    };
-
-    const onPointerMove = (e) => {
-      if (!dragging) return;
-      _profileDragOccurred = true;
-
-      const pt = svg.createSVGPoint();
-      pt.x = e.clientX;
-      pt.y = e.clientY;
-      const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
-
-      // Clamp to chart area
-      const cx = Math.max(pad.l, Math.min(pad.l + layout.cw, svgPt.x));
-      const cy = Math.max(pad.t, Math.min(pad.t + layout.ch, svgPt.y));
-
-      dot.setAttribute('cx', cx);
-      dot.setAttribute('cy', cy);
-
-      // Show snapped values
-      const rawDay = scales.xInv(cx);
-      const rawTemp = scales.yInv(cy);
-      const snapDay = Math.max(0, _snapVal(rawDay, 0.5));
-      const snapTemp = _snapVal(rawTemp, 0.5);
-
-      if (dragLabel) {
-        dragLabel.setAttribute('x', cx);
-        dragLabel.setAttribute('y', cy - 12);
-        dragLabel.textContent = `Day ${snapDay}, ${snapTemp}°C`;
-      }
-    };
-
-    const onPointerUp = (e) => {
-      if (!dragging) return;
-      dragging = false;
-      dot.releasePointerCapture(e.pointerId);
-      dot.removeEventListener('pointermove', onPointerMove);
-      dot.removeEventListener('pointerup', onPointerUp);
-
-      if (dragLabel) { dragLabel.remove(); dragLabel = null; }
-      dot.style.cursor = '';
-      dot.setAttribute('r', '6');
-
-      if (!_profileDragOccurred) return;  // Was just a click, not a drag
-
-      // Compute final snapped position
-      const pt = svg.createSVGPoint();
-      pt.x = e.clientX;
-      pt.y = e.clientY;
-      const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
-      const cx = Math.max(pad.l, Math.min(pad.l + layout.cw, svgPt.x));
-      const cy = Math.max(pad.t, Math.min(pad.t + layout.ch, svgPt.y));
-
-      const newDay = Math.max(0, _snapVal(scales.xInv(cx), 0.5));
-      const newTemp = _snapVal(scales.yInv(cy), 0.5);
-
-      if (origIdx >= 0 && origIdx < profileSteps.length) {
-        profileSteps[origIdx].day = newDay;
-        profileSteps[origIdx].temp = newTemp;
-      }
-      profileSteps.sort((a, b) => a.day - b.day);
-      renderProfileSteps();
-      renderProfileTimeline(_profileBrew);
-    };
-
-    dot.addEventListener('pointerdown', onPointerDown);
-
-    // Double-click to delete
-    dot.addEventListener('dblclick', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const sortIdx = parseInt(dot.getAttribute('data-index'));
-      const origI = sortedToOrigIdx[sortIdx];
-      const step = sorted[sortIdx];
-      if (origI >= 0) profileSteps.splice(origI, 1);
-      renderProfileSteps();
-      renderProfileTimeline(_profileBrew);
-      showToast(`Removed step: Day ${step.day}, ${step.temp}°C`, 'success');
+function openProfileBuilder(profileId) {
+  _editingProfileId = profileId || null;
+  _profileBuilderSteps = [];
+  document.getElementById("profile-builder").style.display = "";
+  document.getElementById("profile-builder-title").textContent = profileId ? "Edit Profile" : "New Profile";
+  document.getElementById("profile-name").value = "";
+  if (profileId) {
+    fetch("/api/profiles/" + profileId).then(r => r.json()).then(p => {
+      document.getElementById("profile-name").value = p.name;
+      _profileBuilderSteps = p.steps || [];
+      renderProfileBuilderSteps();
+      renderProfileBuilderChart();
     });
-  });
+  } else {
+    renderProfileBuilderSteps();
+    renderProfileBuilderChart();
+  }
+  loadLegendaryProfilesForBuilder();
 }
 
-function addProfileStep() {
-  const day = parseFloat(document.getElementById("profile-step-day").value);
-  const temp = parseFloat(document.getElementById("profile-step-temp").value);
-  const label = document.getElementById("profile-step-label").value.trim();
-  if (isNaN(day) || isNaN(temp)) { showToast("Enter a day and temperature", "error"); return; }
-  profileSteps.push({ day, temp, label });
-  profileSteps.sort((a, b) => a.day - b.day);
-  renderProfileSteps();
-  renderProfileTimeline(_profileBrew);
-  document.getElementById("profile-step-day").value = "";
-  document.getElementById("profile-step-temp").value = "";
-  document.getElementById("profile-step-label").value = "";
+function cancelProfileBuilder() {
+  document.getElementById("profile-builder").style.display = "none";
+  _editingProfileId = null;
+  _profileBuilderSteps = [];
+  if (_profileChart) { _profileChart.destroy(); _profileChart = null; }
 }
 
-function removeProfileStep(index) {
-  const sorted = [...profileSteps].sort((a, b) => a.day - b.day);
-  const step = sorted[index];
-  profileSteps = profileSteps.filter(s => s !== step);
-  renderProfileSteps();
-  renderProfileTimeline(_profileBrew);
+async function saveProfileTemplate() {
+  const name = document.getElementById("profile-name").value.trim();
+  if (!name) { showToast("Profile name is required", "error"); return; }
+  if (!_profileBuilderSteps.length) { showToast("Add at least one step", "error"); return; }
+  const method = _editingProfileId ? "PUT" : "POST";
+  const url = _editingProfileId ? "/api/profiles/" + _editingProfileId : "/api/profiles";
+  const res = await fetch(url, { method, headers: {"Content-Type": "application/json"}, body: JSON.stringify({name, steps: _profileBuilderSteps}) });
+  if (res.ok) { showToast("Profile saved", "success"); cancelProfileBuilder(); loadProfiles(); }
+  else { const err = await res.json(); showToast(err.error || "Failed to save", "error"); }
 }
 
-async function saveProfile() {
-  if (!currentBrewId) return;
-  const profile = profileSteps.length ? { steps: profileSteps } : null;
+function editProfile(id) { openProfileBuilder(id); }
+
+async function deleteProfile(id) {
+  if (!confirm("Delete this profile?")) return;
+  await fetch("/api/profiles/" + id, {method: "DELETE"});
+  showToast("Profile deleted", "success");
+  loadProfiles();
+}
+
+async function applyProfileToBrew(profileId) {
+  const res = await fetch("/api/brews");
+  const brews = await res.json();
+  const active = (Array.isArray(brews) ? brews : []).filter(b => b.status === "active");
+  if (!active.length) { showToast("No active brews", "error"); return; }
+  if (active.length === 1) {
+    if (!confirm('Apply to "' + active[0].name + '"?')) return;
+    const r = await fetch("/api/brews/" + active[0].id + "/apply-profile", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({profile_id: profileId}) });
+    if (r.ok) showToast("Profile applied", "success"); else showToast("Failed", "error");
+  } else {
+    const names = active.map((b, i) => (i+1) + ". " + b.name).join("\n");
+    const choice = prompt("Which brew?\n" + names + "\nEnter number:");
+    const idx = parseInt(choice) - 1;
+    if (idx >= 0 && idx < active.length) {
+      const r = await fetch("/api/brews/" + active[idx].id + "/apply-profile", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({profile_id: profileId}) });
+      if (r.ok) showToast("Profile applied", "success"); else showToast("Failed", "error");
+    }
+  }
+}
+
+async function loadLegendaryProfilesForBuilder() {
   try {
-    await fetch(`/api/brews/${currentBrewId}/update`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ temp_profile: profile })
-    });
-    showToast(profile ? "Profile saved" : "Profile cleared", "success");
-    loadBrewDetail(currentBrewId);
-  } catch (e) { showToast("Failed", "error"); }
+    const res = await fetch("/api/brews/legendary-profiles");
+    const data = await res.json();
+    const sel = document.getElementById("load-profile-from-legendary");
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Select a brew —</option>' +
+      data.map(b => '<option value=\'' + JSON.stringify(b.temp_profile?.steps || []).replace(/'/g, "&#39;") + '\'>' + esc(b.name) + '</option>').join("");
+  } catch (e) {}
 }
 
-async function clearProfile() {
-  if (!confirm("Clear the temperature profile?")) return;
-  profileSteps = [];
-  renderProfileSteps();
-  document.getElementById("profile-timeline").innerHTML = '';
-  await saveProfile();
+function loadLegendaryProfileForBuilder() {
+  const sel = document.getElementById("load-profile-from-legendary");
+  if (!sel || !sel.value) return;
+  try { _profileBuilderSteps = JSON.parse(sel.value); renderProfileBuilderSteps(); renderProfileBuilderChart(); } catch (e) {}
+}
+
+let _brewProfileChart = null;
+function renderBrewProfileReadonly(brew) {
+  const panel = document.getElementById("brew-profile-display");
+  if (!panel) return;
+  if (!brew.temp_profile || !brew.temp_profile.steps || !brew.temp_profile.steps.length) {
+    panel.style.display = "none";
+    return;
+  }
+  panel.style.display = "";
+  const steps = brew.temp_profile.steps;
+  const sorted = [...steps].sort((a, b) => a.day - b.day);
+  const currentIdx = brew.temp_profile.current_step_index || 0;
+  const stepsEl = document.getElementById("brew-profile-steps");
+  stepsEl.innerHTML = sorted.map((s, i) =>
+    '<div style="padding:4px 8px;display:flex;gap:12px;' + (i === currentIdx ? 'background:rgba(46,160,67,0.12);border-left:3px solid #2ea043;' : 'border-left:3px solid transparent;') + '">' +
+    '<span style="color:#8b949e;min-width:50px">Day ' + s.day + '</span>' +
+    '<span style="color:#2ea043;font-weight:bold;min-width:50px">' + s.temp + '°C</span>' +
+    '<span>' + esc(s.label || "") + '</span></div>'
+  ).join("");
+  // Chart
+  const canvas = document.getElementById("brew-profile-chart");
+  if (_brewProfileChart) { _brewProfileChart.destroy(); _brewProfileChart = null; }
+  _brewProfileChart = new Chart(canvas, {
+    type: "line",
+    data: { datasets: [{ data: sorted.map(s => ({x: s.day, y: s.temp})), borderColor: "#2ea043", backgroundColor: "rgba(46,160,67,0.1)", fill: true, stepped: "before", pointRadius: 4, pointBackgroundColor: "#2ea043", borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { type: "linear", title: { display: true, text: "Day", color: "#8b949e" }, grid: { color: "#21262d" }, ticks: { color: "#8b949e" } }, y: { title: { display: true, text: "°C", color: "#8b949e" }, grid: { color: "#21262d" }, ticks: { color: "#8b949e" } } } }
+  });
+}
+
+async function saveBrewProfileAsTemplate() {
+  if (!currentBrewId) return;
+  const res = await fetch("/api/brews/" + currentBrewId + "/status");
+  const brew = await res.json();
+  const profile = brew.temp_profile;
+  if (!profile || !profile.steps || !profile.steps.length) { showToast("No profile to save", "error"); return; }
+  const name = prompt("Profile template name:", brew.name + " Profile");
+  if (!name) return;
+  const r = await fetch("/api/profiles", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name, steps: profile.steps}) });
+  if (r.ok) showToast("Saved as template", "success"); else showToast("Failed", "error");
 }
 
 /* --- Manual Reading --- */
@@ -4350,6 +4145,19 @@ function copyShoppingList(idx) {
   navigator.clipboard.writeText(el.textContent).then(() => {
     const btn = document.getElementById("btn-copy-list-" + idx);
     if (btn) { btn.textContent = "Copied!"; setTimeout(() => btn.textContent = "Copy to Clipboard", 2000); }
+  });
+}
+
+document.getElementById("ha_discovery_enabled")?.addEventListener("change", function() {
+  document.getElementById("ha-prefix-row").style.display = this.checked ? "" : "none";
+});
+
+function copyYaml(btn) {
+  const block = btn.closest(".yaml-block");
+  const code = block.querySelector("code").textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = "Copied!";
+    setTimeout(() => btn.textContent = "Copy", 2000);
   });
 }
 

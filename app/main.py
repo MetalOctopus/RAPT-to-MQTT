@@ -261,7 +261,7 @@ def post_config():
 
     cfg = load_config()
 
-    for key in ["mqtt_host", "mqtt_username", "rapt_email", "notification_topic"]:
+    for key in ["mqtt_host", "mqtt_username", "rapt_email", "notification_topic", "ha_discovery_prefix"]:
         if key in data:
             cfg[key] = data[key]
 
@@ -279,6 +279,13 @@ def post_config():
 
     if "auto_start" in data:
         cfg["auto_start"] = bool(data["auto_start"])
+
+    if "ha_discovery_enabled" in data:
+        cfg["ha_discovery_enabled"] = bool(data["ha_discovery_enabled"])
+
+    if "notification_level" in data:
+        if data["notification_level"] in ("all", "important", "off"):
+            cfg["notification_level"] = data["notification_level"]
 
     if "rapt_secret" in data and not data["rapt_secret"].startswith("*"):
         cfg["rapt_secret"] = data["rapt_secret"]
@@ -428,6 +435,11 @@ def update_device_management(device_id):
         dev = bridge._devices.get(device_id)
         if dev and nickname is not None:
             dev["_nickname"] = nickname if nickname else None
+    if bridge._config.get("ha_discovery_enabled") and bridge._ha_discovery._mqtt:
+        dev = bridge._devices.get(device_id, {})
+        dtype = "TILT" if dev.get("deviceType") == "TILT" else "RAPT"
+        dname = nickname or dev.get("name", "Unknown")
+        bridge._ha_discovery.publish_discovery(device_id, dtype, dname)
     return jsonify({"status": "ok"})
 
 
@@ -438,6 +450,8 @@ def forget_device(device_id):
     # Also remove from in-memory devices if present
     with bridge._devices_lock:
         bridge._devices.pop(device_id, None)
+    if bridge._config.get("ha_discovery_enabled") and bridge._ha_discovery._mqtt:
+        bridge._ha_discovery.remove_device(device_id)
     return jsonify({"status": "ok"})
 
 
@@ -609,6 +623,61 @@ def suggest_fg(session_id):
     """Auto-detect FG from hydrometer data for this brew."""
     fg = brew.detect_fg(session_id)
     return jsonify({"fg": fg})
+
+
+# --- Temperature Profiles ---
+
+@app.route("/api/profiles", methods=["GET"])
+def list_profiles():
+    return jsonify(history.list_profiles())
+
+@app.route("/api/profiles", methods=["POST"])
+def create_profile():
+    data = request.get_json(force=True)
+    name = data.get("name", "").strip()
+    steps = data.get("steps", [])
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+    if not steps:
+        return jsonify({"error": "At least one step is required"}), 400
+    profile_id = history.save_profile(name, steps)
+    return jsonify({"id": profile_id, "status": "ok"})
+
+@app.route("/api/profiles/<profile_id>", methods=["GET"])
+def get_profile(profile_id):
+    p = history.get_profile(profile_id)
+    if not p:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(p)
+
+@app.route("/api/profiles/<profile_id>", methods=["PUT"])
+def update_profile(profile_id):
+    data = request.get_json(force=True)
+    name = data.get("name")
+    steps = data.get("steps")
+    if not history.update_profile(profile_id, name=name, steps=steps):
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({"status": "ok"})
+
+@app.route("/api/profiles/<profile_id>", methods=["DELETE"])
+def delete_profile(profile_id):
+    history.delete_profile(profile_id)
+    return jsonify({"status": "ok"})
+
+@app.route("/api/brews/<session_id>/apply-profile", methods=["POST"])
+def apply_profile_to_brew(session_id):
+    data = request.get_json(force=True)
+    profile_id = data.get("profile_id")
+    if not profile_id:
+        return jsonify({"error": "profile_id is required"}), 400
+    p = history.get_profile(profile_id)
+    if not p:
+        return jsonify({"error": "Profile not found"}), 404
+    try:
+        brew.update_session(session_id, {"temp_profile": {"steps": p["steps"]}})
+    except (ValueError, KeyError):
+        return jsonify({"error": "Brew session not found"}), 404
+    return jsonify({"status": "ok"})
 
 
 @app.route("/api/brews/<session_id>/complete", methods=["POST"])

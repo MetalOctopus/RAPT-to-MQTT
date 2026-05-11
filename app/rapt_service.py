@@ -6,6 +6,7 @@ import paho.mqtt.client as mqtt
 from datetime import datetime
 
 from app.config import TOKEN_FILE
+from app.ha_discovery import HADiscovery
 
 
 class RaptBridge:
@@ -40,6 +41,8 @@ class RaptBridge:
         self._tilt_last = {}  # device_id -> {temp, sg, time}
         # Controller runtime tracking — infer heating/cooling from deltas
         self._ctrl_last_runtimes = {}  # device_id -> {cooling, heating}
+        # Home Assistant MQTT auto-discovery
+        self._ha_discovery = HADiscovery(None, self._config, self._logger)
 
     @staticmethod
     def _rssi_bucket(rssi):
@@ -146,6 +149,11 @@ class RaptBridge:
             self._mqtt_client.on_message = self._on_message
             self._mqtt_client.reconnect_delay_set(min_delay=1, max_delay=120)
 
+            # Wire HA discovery to the MQTT client before connecting
+            self._ha_discovery._mqtt = self._mqtt_client
+            if self._config.get("ha_discovery_enabled"):
+                self._ha_discovery.setup_lwt(self._mqtt_client)
+
             mqtt_host = self._config["mqtt_host"]
             mqtt_port = int(self._config.get("mqtt_port", 1883))
 
@@ -189,6 +197,15 @@ class RaptBridge:
             client.subscribe(self.TILT_TOPIC)
             client.subscribe(self.TILT_TOPIC_WILDCARD)
             self._logger.info(f"Subscribed to {self.TILT_TOPIC} and {self.TILT_TOPIC_WILDCARD}")
+            # HA MQTT discovery: announce online and publish configs for known devices
+            if self._config.get("ha_discovery_enabled"):
+                self._ha_discovery.publish_online()
+                for did, dev in list(self._devices.items()):
+                    dtype = "TILT Hydrometer" if dev.get("deviceType") == "TILT" else "RAPT Temperature Controller"
+                    dname = dev.get("_nickname") or dev.get("name") or dev.get("tiltColor", "Unknown")
+                    self._ha_discovery.publish_discovery(did, dtype, dname)
+                client.subscribe("rapt2mqtt/+/set_target")
+                self._logger.info("Subscribed to rapt2mqtt/+/set_target (HA target temp)")
         else:
             self._logger.error(f"MQTT connection failed with code {rc}")
 
@@ -198,6 +215,19 @@ class RaptBridge:
 
     def _on_message(self, client, userdata, msg):
         try:
+            # HA discovery: handle set_target commands from Home Assistant
+            topic = msg.topic
+            if topic.startswith("rapt2mqtt/") and topic.endswith("/set_target"):
+                try:
+                    parts = topic.split("/")
+                    device_id = parts[1]
+                    target = float(msg.payload.decode())
+                    self._logger.info(f"HA set_target: {device_id} -> {target}°C")
+                    self.set_target_temperature(target, device_id)
+                except (ValueError, IndexError) as e:
+                    self._logger.warning(f"Invalid set_target: {e}")
+                return
+
             if msg.topic == self.TILT_TOPIC or msg.topic.startswith("TiltPi/"):
                 self._handle_tilt_message(msg)
                 return
@@ -365,6 +395,17 @@ class RaptBridge:
                     json.dumps({k: v for k, v in device.items() if not k.startswith("_")})
                 )
 
+            # Publish HA discovery state for this Tilt
+            if self._config.get("ha_discovery_enabled"):
+                ha_state = {
+                    "temperature": round(device.get("temperature", 0), 1),
+                    "specificGravity": round(device.get("specificGravity", 1.0), 4),
+                    "rssi": device.get("rssi", 0),
+                }
+                dname = device.get("_nickname") or device.get("tiltColor", "Unknown")
+                self._ha_discovery.publish_discovery(device_id, "TILT Hydrometer", dname)
+                self._ha_discovery.publish_state(device_id, ha_state)
+
         except Exception as e:
             self._logger.error(f"Error processing TILT message: {e}")
 
@@ -500,6 +541,19 @@ class RaptBridge:
                     cid, "controller", ctrl.get("name", "Unknown"),
                     json.dumps({k: v for k, v in ctrl.items() if not k.startswith("_")})
                 )
+                # Publish HA discovery state for this controller
+                if self._config.get("ha_discovery_enabled"):
+                    ha_state = {
+                        "temperature": round(ctrl.get("temperature", 0), 1),
+                        "targetTemperature": round(ctrl.get("targetTemperature", 0), 1),
+                        "_cooling_active": ctrl.get("_cooling_active", False),
+                        "_heating_active": ctrl.get("_heating_active", False),
+                        "rssi": ctrl.get("rssi", 0),
+                        "connectionState": ctrl.get("connectionState", "Unknown"),
+                    }
+                    dname = ctrl.get("_nickname") or ctrl.get("name", "Controller")
+                    self._ha_discovery.publish_discovery(cid, "RAPT Temperature Controller", dname)
+                    self._ha_discovery.publish_state(cid, ha_state)
 
         return device_id
 
@@ -540,8 +594,13 @@ class RaptBridge:
         time.sleep(2)
         self._update_mqtt()
 
-    def publish_notification(self, title, message, icon="mdi:beer"):
+    def publish_notification(self, title, message, icon="mdi:beer", important=False):
         """Publish an MQTT notification for Home Assistant / HACS."""
+        level = self._config.get("notification_level", "all")
+        if level == "off":
+            return
+        if level == "important" and not important:
+            return
         if not self._mqtt_client:
             self._logger.warning("Cannot publish notification: MQTT not connected")
             return
@@ -550,6 +609,7 @@ class RaptBridge:
             "title": title,
             "message": message,
             "icon": icon,
+            "important": important,
             "timestamp": datetime.now().isoformat(),
         })
         self._mqtt_client.publish(topic, payload)

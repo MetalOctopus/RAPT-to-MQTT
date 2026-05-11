@@ -25,6 +25,9 @@ DEFAULTS = {
     "guest_mode": "button",
     "guest_username": "guest",
     "guest_password_hash": "",
+    "ha_discovery_enabled": False,
+    "ha_discovery_prefix": "homeassistant",
+    "notification_level": "all",
 }
 
 # Environment variable name -> config key (or tuple with type converter)
@@ -40,6 +43,9 @@ ENV_MAP = {
     "AUTH_ENABLED": ("auth_enabled", lambda v: v.lower() in ("true", "1", "yes")),
     "BREWMASTER_USERNAME": "brewmaster_username",
     "GUEST_MODE": "guest_mode",
+    "HA_DISCOVERY_ENABLED": ("ha_discovery_enabled", lambda v: v.lower() in ("true", "1", "yes")),
+    "HA_DISCOVERY_PREFIX": "ha_discovery_prefix",
+    "NOTIFICATION_LEVEL": "notification_level",
 }
 
 _lock = threading.Lock()

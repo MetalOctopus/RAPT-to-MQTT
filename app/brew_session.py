@@ -7,6 +7,16 @@ import threading
 import uuid
 from datetime import datetime
 
+EVENT_ICONS = {
+    "dry_hop": "mdi:leaf",
+    "cold_crash": "mdi:snowflake",
+    "sample": "mdi:flask",
+    "yeast": "mdi:bacteria",
+    "ingredient": "mdi:food-variant",
+    "clarifier": "mdi:water-check",
+    "note": "mdi:note-text",
+}
+
 
 class BrewSession:
     """Manages multiple concurrent brew sessions with per-session feedback loops."""
@@ -75,6 +85,7 @@ class BrewSession:
 
         self._history.save_session(session_id, json.dumps(session))
         self._history.add_event(session_id, "brew_started", f"Started: {name}")
+        self._bridge.publish_notification(name, "Brew started", "mdi:creation", important=True)
         self._active_sessions[session_id] = session
         self._logger.info(f"Brew session started: {name} ({session_id})")
         return session
@@ -232,12 +243,21 @@ class BrewSession:
                 session["id"], "profile_step",
                 f"{label}: {current_step['temp']}°C"
             )
+            self._bridge.publish_notification(
+                session["name"],
+                f"Profile step: {label} — {current_step['temp']}°C",
+                "mdi:thermometer-lines",
+                important=True
+            )
 
     def add_event(self, session_id, event_type, description=""):
         session = self._active_sessions.get(session_id)
         if not session:
             raise ValueError(f"No active brew session with id {session_id}.")
         self._history.add_event(session_id, event_type, description)
+        icon = EVENT_ICONS.get(event_type, "mdi:beer")
+        brew_name = session.get("name", "Brew")
+        self._bridge.publish_notification(brew_name, description or event_type, icon)
         self._logger.info(f"Brew event: {event_type} - {description}")
 
     def detect_fg(self, session_id):
@@ -336,6 +356,8 @@ class BrewSession:
 
         self._history.save_session(session["id"], json.dumps(session))
         self._history.add_event(session["id"], "brew_completed", f"FG: {fg}")
+        fg_display = f" — FG: {session.get('fg', 'N/A')}" if session.get("fg") else ""
+        self._bridge.publish_notification(session["name"], f"Brew completed{fg_display}", "mdi:flag-checkered", important=True)
         self._logger.info(f"Brew completed: {session['name']}")
         del self._active_sessions[session_id]
         return session
@@ -350,6 +372,7 @@ class BrewSession:
         session["completed_at"] = datetime.now().isoformat()
         self._history.save_session(session["id"], json.dumps(session))
         self._history.add_event(session["id"], "brew_cancelled", "Session cancelled")
+        self._bridge.publish_notification(session["name"], "Brew cancelled", "mdi:cancel", important=True)
         self._logger.info(f"Brew cancelled: {session['name']}")
         del self._active_sessions[session_id]
 
@@ -681,5 +704,5 @@ class BrewSession:
         icon = reminder.get("icon", "mdi:beer")
         title = session["name"]
         self._logger.info(f"Reminder fired: {title} - {msg}")
-        self._bridge.publish_notification(title, msg, icon)
+        self._bridge.publish_notification(title, msg, icon, important=True)
         self._history.add_event(session["id"], "reminder_fired", msg)
