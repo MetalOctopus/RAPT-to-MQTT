@@ -2197,7 +2197,9 @@
       - service: "notify.{{ '{{' }} trigger.payload_json.target_device {{ '}}' }}"
         data:
           title: "{{ '{{' }} trigger.payload_json.title {{ '}}' }}"
-          message: "{{ '{{' }} trigger.payload_json.message {{ '}}' }}"</code></pre>
+          message: "{{ '{{' }} trigger.payload_json.message {{ '}}' }}"
+          data:
+            notification_icon: "{{ '{{' }} trigger.payload_json.icon {{ '}}' }}"</code></pre>
         </div>
         <p class="help-text">Any service can publish to <code>homeassistant_notifications</code> — the <code>target_device</code> in the payload routes to the right phone.</p>
       </div>
