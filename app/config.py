@@ -27,6 +27,7 @@ DEFAULTS = {
     "guest_password_hash": "",
     "ha_discovery_enabled": False,
     "ha_discovery_prefix": "homeassistant",
+    "notification_target_device": "",
     "notification_level": "all",
 }
 
@@ -45,6 +46,7 @@ ENV_MAP = {
     "GUEST_MODE": "guest_mode",
     "HA_DISCOVERY_ENABLED": ("ha_discovery_enabled", lambda v: v.lower() in ("true", "1", "yes")),
     "HA_DISCOVERY_PREFIX": "ha_discovery_prefix",
+    "NOTIFICATION_TARGET_DEVICE": "notification_target_device",
     "NOTIFICATION_LEVEL": "notification_level",
 }
 

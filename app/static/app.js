@@ -241,7 +241,7 @@ async function loadConfig() {
     document.getElementById("rapt_email").value = cfg.rapt_email || "";
     document.getElementById("rapt_secret").value = cfg.rapt_secret || "";
     document.getElementById("poll_interval").value = cfg.poll_interval || 300;
-    document.getElementById("notification_topic").value = cfg.notification_topic || "RAPT2MQTT/notify";
+    document.getElementById("notification_target_device").value = cfg.notification_target_device || "";
     document.getElementById("auto_start").checked = cfg.auto_start !== false;
     document.getElementById("hide_affiliate_links").checked = !!cfg.hide_affiliate_links;
     document.getElementById("gravity_unit").value = cfg.gravity_unit || "sg";
@@ -264,7 +264,7 @@ async function saveConfig() {
     rapt_email: document.getElementById("rapt_email").value,
     rapt_secret: document.getElementById("rapt_secret").value,
     poll_interval: document.getElementById("poll_interval").value,
-    notification_topic: document.getElementById("notification_topic").value,
+    notification_target_device: document.getElementById("notification_target_device").value,
     auto_start: document.getElementById("auto_start").checked,
     hide_affiliate_links: document.getElementById("hide_affiliate_links").checked,
     gravity_unit: document.getElementById("gravity_unit").value,

@@ -121,8 +121,9 @@
             <input type="number" id="poll_interval" value="300" min="10" max="3600">
           </div>
           <div class="form-group">
-            <label for="notification_topic">Notification MQTT Topic</label>
-            <input type="text" id="notification_topic" placeholder="RAPT2MQTT/notify">
+            <label for="notification_target_device">Notification Target Device</label>
+            <input type="text" id="notification_target_device" placeholder="mobile_app_my_phone">
+            <p class="help-text">HA device to notify (e.g. <code>mobile_app_my_phone</code>). Publishes to <code>homeassistant_notifications</code>. Leave blank to disable.</p>
           </div>
           <div class="form-row" style="margin-top:16px;border-top:1px solid #21262d;padding-top:16px">
             <h3 style="margin:0 0 12px">Home Assistant</h3>
@@ -1643,7 +1644,7 @@
                   <tr><td><code>RAPT/temperatureController/Command</code></td><td>Subscribe</td><td>JSON command (e.g. set target temp)</td></tr>
                   <tr><td><code>TiltPi</code></td><td>Subscribe</td><td>JSON from TiltPi (all colours, flat topic)</td></tr>
                   <tr><td><code>TiltPi/{colour}</code></td><td>Subscribe</td><td>Per-colour JSON from upgraded TiltPi flow</td></tr>
-                  <tr><td><code>RAPT2MQTT/notify</code></td><td>Publish</td><td>Human-readable notifications (brew events, alerts)</td></tr>
+                  <tr><td><code>homeassistant_notifications</code></td><td>Publish</td><td>Notifications with target_device for HA phone push</td></tr>
                 </tbody>
               </table>
             </div>
@@ -2188,17 +2189,17 @@
             <button class="btn-secondary btn-sm" onclick="copyYaml(this)">Copy</button>
           </div>
           <pre><code>automation:
-  - alias: "RAPT2MQTT Brew Notification"
+  - alias: "HASS Notifications"
     trigger:
       - platform: mqtt
-        topic: "RAPT2MQTT/notify"
+        topic: "homeassistant_notifications"
     action:
-      - service: notify.mobile_app_your_phone
+      - service: "notify.{{ '{{' }} trigger.payload_json.target_device {{ '}}' }}"
         data:
           title: "{{ '{{' }} trigger.payload_json.title {{ '}}' }}"
           message: "{{ '{{' }} trigger.payload_json.message {{ '}}' }}"</code></pre>
         </div>
-        <p class="help-text">Replace <code>notify.mobile_app_your_phone</code> with your actual mobile app service name.</p>
+        <p class="help-text">Any service can publish to <code>homeassistant_notifications</code> — the <code>target_device</code> in the payload routes to the right phone.</p>
       </div>
       <div class="panel">
         <h3>Custom Template Sensors</h3>
@@ -2254,7 +2255,7 @@
           <tr><td>RAPT Data</td><td><code>RAPT/temperatureController</code></td></tr>
           <tr><td>RAPT Commands</td><td><code>RAPT/temperatureController/Command</code></td></tr>
           <tr><td>TILT Data (inbound)</td><td><code>TiltPi</code></td></tr>
-          <tr><td>Notifications (outbound)</td><td><code>RAPT2MQTT/notify</code> (configurable)</td></tr>
+          <tr><td>Notifications (outbound)</td><td><code>homeassistant_notifications</code></td></tr>
         </table>
       </div>
 
@@ -2273,7 +2274,7 @@
 
       <div class="panel">
         <h2>Brew Reminders &amp; Notifications</h2>
-        <p>Set reminders on active brews (e.g. "Dry hop on day 5"). When triggered, a notification is published to your configured MQTT topic. Set up a Home Assistant automation to pick up <code>RAPT2MQTT/notify</code> messages and send push notifications.</p>
+        <p>Set reminders on active brews (e.g. "Dry hop on day 5"). When triggered, a notification is published to <code>homeassistant_notifications</code> with your configured target device. Set up the HA automation above to route these to your phone.</p>
       </div>
 
       <div class="panel">

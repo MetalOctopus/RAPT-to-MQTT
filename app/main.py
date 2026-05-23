@@ -261,7 +261,7 @@ def post_config():
 
     cfg = load_config()
 
-    for key in ["mqtt_host", "mqtt_username", "rapt_email", "notification_topic", "ha_discovery_prefix"]:
+    for key in ["mqtt_host", "mqtt_username", "rapt_email", "notification_target_device", "ha_discovery_prefix"]:
         if key in data:
             cfg[key] = data[key]
 

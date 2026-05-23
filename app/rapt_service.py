@@ -595,7 +595,7 @@ class RaptBridge:
         self._update_mqtt()
 
     def publish_notification(self, title, message, icon="mdi:beer", important=False):
-        """Publish an MQTT notification for Home Assistant / HACS."""
+        """Publish an MQTT notification for Home Assistant."""
         level = self._config.get("notification_level", "all")
         if level == "off":
             return
@@ -604,15 +604,18 @@ class RaptBridge:
         if not self._mqtt_client:
             self._logger.warning("Cannot publish notification: MQTT not connected")
             return
-        topic = self._config.get("notification_topic", "RAPT2MQTT/notify")
+        target_device = self._config.get("notification_target_device", "").strip()
+        if not target_device:
+            self._logger.debug("Notification skipped: no notification_target_device configured")
+            return
         payload = json.dumps({
             "title": title,
             "message": message,
             "icon": icon,
-            "important": important,
+            "target_device": target_device,
             "timestamp": datetime.now().isoformat(),
         })
-        self._mqtt_client.publish(topic, payload)
+        self._mqtt_client.publish("homeassistant_notifications", payload)
         self._logger.info(f"Notification: {title} - {message}")
 
     def _set_temperature(self, target):
