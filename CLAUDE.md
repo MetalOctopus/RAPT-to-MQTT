@@ -45,7 +45,7 @@ HomeAssistant/
 - Temperatures: Celsius first, e.g. "20.0°C (68°F)"
 - Specific gravity: decimal format, e.g. 1.025 not 1025. Use `fmtG()` helper in JS. Supports SG/Plato toggle via config (`gravity_unit`).
 - Round all device API values to 1 decimal (RAPT returns e.g. 17.4999904632568)
-- MQTT topics: `RAPT/temperatureController`, `RAPT/temperatureController/Command`, `TiltPi`, `RAPT2MQTT/notify`, `rapt2mqtt/{device_id}/state`, `rapt2mqtt/{device_id}/set_target`, `rapt2mqtt/status`
+- MQTT topics: `RAPT/temperatureController`, `RAPT/temperatureController/Command`, `TiltPi`, `homeassistant_notifications`, `rapt2mqtt/{device_id}/state`, `rapt2mqtt/{device_id}/set_target`, `rapt2mqtt/status`
 - All frontend is vanilla JS — no React/Vue/etc
 - Chart.js 4 with chartjs-adapter-date-fns for time axes, ECharts 5 for gauges
 - Chart X-axis: Grafana-style — date on day boundaries (major ticks, bold), time between (minor ticks)
@@ -80,7 +80,8 @@ Two integration paths — both work, use either or both:
 - HACS store registration: needs PR to https://github.com/hacs/default (see HOW_WE_BUILT_IT.md)
 
 ## Brew Notifications
-- All brew events publish to `RAPT2MQTT/notify` with `{title, message, icon, timestamp}`
+- All brew events publish to `homeassistant_notifications` with `{title, message, icon, target_device, timestamp}`
+- `target_device` routes to the right phone via a single generic HA automation (e.g. `mobile_app_ian_s_phone`)
 - Events: brew start/complete/cancel, dry hop, cold crash, clarifier, yeast, profile step advance, reminders
 - `notification_level` config: "all" (every event), "important" (lifecycle + reminders only), "off"
 - Lifecycle events (start, complete, cancel, profile step, reminder) are flagged `important=True`

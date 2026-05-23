@@ -24,7 +24,7 @@
 - Integrates [Tilt Hydrometers](https://tilthydrometer.com/) via TiltPi for gravity tracking
 - Tracks brew sessions with fermentation charts, brew logs, and smart temperature feedback
 - **Temperature profiles** — create, save, and apply multi-step fermentation schedules
-- **Brew notifications** — all brew events published to MQTT for phone push via HA automations
+- **Brew notifications** — all brew events published to a generic MQTT topic with target device routing for phone push
 - Stores completed brews as "Legendary Brews" with stats, ratings, and tasting notes
 - Single-page web UI on port 8099 — no app install needed
 
@@ -90,7 +90,7 @@ All settings can also be passed as environment variables: `RAPT_EMAIL`, `RAPT_SE
 | `RAPT/temperatureController` | Published | Temperature readings and device state |
 | `RAPT/temperatureController/Command` | Subscribed | Set target temperature |
 | `TiltPi` | Published | Tilt Hydrometer gravity and temperature |
-| `RAPT2MQTT/notify` | Published | Brew event notifications |
+| `homeassistant_notifications` | Published | Brew notifications with target_device routing |
 | `rapt2mqtt/{device_id}/state` | Published | HA discovery state (retained) |
 | `rapt2mqtt/{device_id}/set_target` | Subscribed | HA target temperature command |
 | `rapt2mqtt/status` | Published | Bridge availability LWT (online/offline) |
@@ -115,7 +115,7 @@ A companion HACS integration that adds brew session entities (beer name, current
 - **Brew Sessions** — Track active fermentations with OG, target temp, and real-time charts
 - **Temperature Profiles** — Create and save multi-step fermentation schedules, apply to any brew
 - **Smart Temperature Feedback** — P-controller that adjusts your RAPT controller based on actual vs target fermentation temperature
-- **Brew Notifications** — Every brew event (start, dry hop, cold crash, completion) published to MQTT for phone push
+- **Brew Notifications** — Every brew event published to `homeassistant_notifications` with target device routing for phone push
 - **Legendary Brews** — Completed brews are archived with stats (OG, FG, ABV, brew time), fermentation charts, ratings, and tasting notes
 - **Tilt Hydrometer Support** — Gravity readings via TiltPi integration
 - **Gravity Units** — Toggle between Specific Gravity and Plato
