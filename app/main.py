@@ -318,6 +318,7 @@ def stop_bridge():
     if not bridge.is_running:
         return jsonify({"status": "already_stopped"})
 
+    brew.stop_all_feedback()
     bridge.stop()
     return jsonify({"status": "stopped"})
 

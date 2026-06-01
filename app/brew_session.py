@@ -482,6 +482,12 @@ class BrewSession:
                 thread.join(timeout=10)
             del self._feedback_threads[session_id]
 
+    def stop_all_feedback(self):
+        """Stop all running feedback loops (called on bridge stop)."""
+        for session_id in list(self._feedback_threads.keys()):
+            self._stop_feedback(session_id)
+        self._logger.info("All feedback loops stopped.")
+
     def _feedback_loop(self, session_id, stop_event):
         """Cascaded control: adjust controller target based on TILT beer temp."""
         self._logger.info(f"Feedback loop started for session {session_id}.")

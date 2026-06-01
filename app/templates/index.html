@@ -67,7 +67,7 @@
 
     <div class="nav-section">
       <div class="nav-label">Config</div>
-      <a class="nav-item active" data-page="config" href="#">MQTT Config</a>
+      <a class="nav-item active" data-page="config" href="#">Settings</a>
       <a class="nav-item" data-page="dashboard" href="#">Dashboard</a>
       <a class="nav-item" data-page="integrations" href="#">Integrations</a>
       <a class="nav-item" data-page="ha-setup" href="#">Home Assistant</a>
@@ -90,7 +90,22 @@
     <!-- Config Page -->
     <div id="page-config" class="page active">
       <div class="panel">
-        <h2>Configuration</h2>
+        <h2>RAPT Account</h2>
+        <p class="help-text" style="margin-bottom:12px">Your Kegland RAPT credentials. Get your API secret from your RAPT account at api.rapt.io.</p>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="rapt_email">RAPT Email</label>
+            <input type="email" id="rapt_email" placeholder="you@example.com">
+          </div>
+          <div class="form-group">
+            <label for="rapt_secret">RAPT API Secret</label>
+            <input type="password" id="rapt_secret" placeholder="Your API secret">
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>MQTT Broker</h2>
+        <p class="help-text" style="margin-bottom:12px">Connection details for your MQTT broker (e.g. Mosquitto). RAPT2MQTT publishes device data here.</p>
         <div class="form-grid">
           <div class="form-group">
             <label for="mqtt_host">MQTT Host</label>
@@ -107,14 +122,6 @@
           <div class="form-group">
             <label for="mqtt_password">MQTT Password</label>
             <input type="password" id="mqtt_password" placeholder="(optional)">
-          </div>
-          <div class="form-group">
-            <label for="rapt_email">RAPT Email</label>
-            <input type="email" id="rapt_email" placeholder="you@example.com">
-          </div>
-          <div class="form-group">
-            <label for="rapt_secret">RAPT API Secret</label>
-            <input type="password" id="rapt_secret" placeholder="Your API secret">
           </div>
           <div class="form-group">
             <label for="poll_interval">Poll Interval (seconds)</label>
@@ -176,10 +183,11 @@
 
       <div class="panel">
         <div class="controls">
-          <h2 style="margin-bottom:0">Bridge</h2>
+          <h2 style="margin-bottom:0">RAPT2MQTT Bridge</h2>
           <button id="btn-start" class="btn-start brewmaster-only">Start</button>
           <button id="btn-stop" class="btn-stop brewmaster-only" disabled>Stop</button>
         </div>
+        <p class="help-text" style="margin-top:8px">The bridge connects to the RAPT cloud API and your MQTT broker, polling your devices and publishing data. Stop and restart after changing credentials.</p>
       </div>
 
       <!-- Auth Config (brewmaster-only) -->
@@ -1654,7 +1662,7 @@
 
       <div class="panel">
         <h2>Next Step: Configure RAPT2MQTT</h2>
-        <p>Got your controller and API secret? Head to <a href="#" onclick="showPage('config'); return false;">MQTT Config</a> to enter your credentials and start bridging data.</p>
+        <p>Got your controller and API secret? Head to <a href="#" onclick="showPage('config'); return false;">Settings</a> to enter your credentials and start bridging data.</p>
       </div>
     </div>
 
@@ -1820,7 +1828,7 @@
             <h4>Add RAPT2MQTT to Your TiltPi</h4>
             <p class="help-text">Injects a small set of MQTT output nodes into your existing TiltPi flow. Your calibration, dashboard, Google Sheets logging, and any custom nodes you've added are completely untouched — we only add, never replace.</p>
             <p class="help-text">What gets added: an MQTT scrape function (reads temperature, gravity, RSSI, colour, TX power, calibration status, and model from each TILT), change-detection filters (so your broker isn't flooded with duplicate readings), and an MQTT output node pointed at your broker.</p>
-            <p class="help-text">Your MQTT broker settings from the MQTT Config page are used automatically. After deployment, TILT data starts flowing into RAPT2MQTT within seconds. Safe to run multiple times — existing RAPT2MQTT nodes are replaced cleanly.</p>
+            <p class="help-text">Your MQTT broker settings from the Settings page are used automatically. After deployment, TILT data starts flowing into RAPT2MQTT within seconds. Safe to run multiple times — existing RAPT2MQTT nodes are replaced cleanly.</p>
             <button id="btn-tiltpi-upgrade" class="btn-save" onclick="deployTiltPiFlow('upgraded')">Deploy MQTT Nodes</button>
           </div>
 
@@ -2123,7 +2131,7 @@
       </div>
       <div class="panel">
         <h3>Option 1: Auto-Discovery (Recommended)</h3>
-        <p>Go to <a href="#" onclick="showPage('config');return false">MQTT Config</a> and enable <strong>MQTT Auto-Discovery</strong>. Restart the bridge. Your devices will appear in Home Assistant automatically.</p>
+        <p>Go to <a href="#" onclick="showPage('config');return false">Settings</a> and enable <strong>MQTT Auto-Discovery</strong>. Restart the bridge. Your devices will appear in Home Assistant automatically.</p>
         <p class="help-text">Requires the MQTT integration in Home Assistant with discovery enabled (the default).</p>
         <h4 style="margin-top:16px">What gets created:</h4>
         <ul class="help-list">
