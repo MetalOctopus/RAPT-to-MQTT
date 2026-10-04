@@ -962,9 +962,28 @@ async function loadBrewHistory() {
 }
 
 /* --- +Brew Page --- */
+let newBrewDevices = {};
+
+function updateNewBrewSgHint() {
+  const hint = document.getElementById("brew-og-tilt-hint");
+  const tiltId = document.getElementById("brew-tilt").value;
+  const dev = tiltId ? newBrewDevices[tiltId] : null;
+  const sg = dev ? dev.specificGravity : null;
+  if (!dev || sg == null) { hint.style.display = "none"; return; }
+  const name = dev._nickname || dev.name || "Tilt";
+  const stale = dev._stale ? " (stale)" : "";
+  hint.innerHTML = `${esc(name)} currently reads <strong>${fmtG(sg)}</strong>${stale} &mdash; <a href="#" id="brew-og-use-sg">use as OG</a>`;
+  hint.style.display = "";
+  document.getElementById("brew-og-use-sg").addEventListener("click", (e) => {
+    e.preventDefault();
+    document.getElementById("brew-og").value = sg.toFixed(3);
+  });
+}
+
 async function loadNewBrewForm() {
   try {
     const devices = await (await fetch("/api/devices")).json();
+    newBrewDevices = devices;
     const tiltSel = document.getElementById("brew-tilt");
     const ctrlSel = document.getElementById("brew-controller");
     tiltSel.innerHTML = '<option value="">None</option>';
@@ -977,6 +996,11 @@ async function loadNewBrewForm() {
       if (dev.deviceType === "TILT") tiltSel.appendChild(opt);
       else ctrlSel.appendChild(opt);
     });
+    // Auto-select the sole Tilt so its current SG is visible immediately
+    const tiltIds = Object.keys(devices).filter(id => devices[id].deviceType === "TILT");
+    if (tiltIds.length === 1) tiltSel.value = tiltIds[0];
+    tiltSel.onchange = updateNewBrewSgHint;
+    updateNewBrewSgHint();
   } catch (e) {}
 }
 
