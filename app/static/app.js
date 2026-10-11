@@ -963,25 +963,28 @@ async function loadBrewHistory() {
 
 /* --- +Brew Page --- */
 let newBrewDevices = {};
+let brewOgManual = false;  // set once the user types their own OG, so we stop auto-filling
 
 function updateNewBrewSgHint() {
   const hint = document.getElementById("brew-og-tilt-hint");
+  const ogInput = document.getElementById("brew-og");
   const tiltId = document.getElementById("brew-tilt").value;
   const dev = tiltId ? newBrewDevices[tiltId] : null;
   const sg = dev ? dev.specificGravity : null;
-  if (!dev || sg == null) { hint.style.display = "none"; return; }
+  const validSg = sg != null && sg >= 0.990 && sg <= 1.160;
+  if (!dev || !validSg) { hint.style.display = "none"; return; }
+  // Choosing a Tilt for the brew means its reading IS the OG — auto-fill it.
+  // Only skip if the user has typed their own OG value.
+  if (!brewOgManual) ogInput.value = sg.toFixed(3);
   const name = dev._nickname || dev.name || "Tilt";
   const stale = dev._stale ? " (stale)" : "";
-  hint.innerHTML = `${esc(name)} currently reads <strong>${fmtG(sg)}</strong>${stale} &mdash; <a href="#" id="brew-og-use-sg">use as OG</a>`;
+  hint.innerHTML = `OG set from ${esc(name)} (currently reads <strong>${fmtG(sg)}</strong>${stale}) &mdash; edit above if needed.`;
   hint.style.display = "";
-  document.getElementById("brew-og-use-sg").addEventListener("click", (e) => {
-    e.preventDefault();
-    document.getElementById("brew-og").value = sg.toFixed(3);
-  });
 }
 
 async function loadNewBrewForm() {
   try {
+    brewOgManual = false;  // fresh form — allow Tilt auto-fill again
     const devices = await (await fetch("/api/devices")).json();
     newBrewDevices = devices;
     const tiltSel = document.getElementById("brew-tilt");
@@ -996,10 +999,19 @@ async function loadNewBrewForm() {
       if (dev.deviceType === "TILT") tiltSel.appendChild(opt);
       else ctrlSel.appendChild(opt);
     });
-    // Auto-select the sole Tilt so its current SG is visible immediately
+    // Auto-select a Tilt so its current SG is visible immediately. Prefer one with a
+    // plausible live reading so a phantom device (e.g. tilt-unknown, SG 0) can't block it.
     const tiltIds = Object.keys(devices).filter(id => devices[id].deviceType === "TILT");
-    if (tiltIds.length === 1) tiltSel.value = tiltIds[0];
-    tiltSel.onchange = updateNewBrewSgHint;
+    const liveTilts = tiltIds.filter(id => {
+      const sg = devices[id].specificGravity;
+      return sg != null && sg >= 0.990 && sg <= 1.160;
+    });
+    if (liveTilts.length === 1) tiltSel.value = liveTilts[0];
+    else if (tiltIds.length === 1) tiltSel.value = tiltIds[0];
+    // Changing the Tilt is a deliberate choice — re-fill OG from the newly chosen one.
+    tiltSel.onchange = () => { brewOgManual = false; updateNewBrewSgHint(); };
+    // Typing your own OG stops the auto-fill from overwriting it.
+    document.getElementById("brew-og").oninput = () => { brewOgManual = true; };
     updateNewBrewSgHint();
   } catch (e) {}
 }
@@ -2942,12 +2954,25 @@ async function coldCrash() {
   overlay.querySelector("#cold-crash-confirm").onclick = async () => {
     overlay.remove();
     try {
+      // Need the brew's assigned controller to set the target on
+      const brew = await (await fetch(`/api/brews/${currentBrewId}`)).json();
+      const ctrlId = brew.controller_device_id;
+      if (!ctrlId) {
+        showToast("No temperature controller assigned to this brew", "error");
+        return;
+      }
       // Stop feedback if active
       await fetch(`/api/brews/${currentBrewId}/feedback/stop`, { method: "POST" }).catch(() => {});
-      // Set target to 0.5°C
-      await fetch("/api/control/temperature", { method: "POST", headers: { "Content-Type": "application/json" },
+      // Set target to 0.5°C on the controller
+      const res = await fetch(`/api/devices/${ctrlId}/set_temperature`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target: 0.5 }) });
-      // Log the event
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Failed to set fridge target", "error");
+        return;
+      }
+      // Log the event only after the target was actually changed
       await fetch(`/api/brews/${currentBrewId}/event`, { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ event_type: "cold_crash", description: "Cold crash started — fridge target set to 0.5°C" }) });
       showToast("Cold crash started", "success");
