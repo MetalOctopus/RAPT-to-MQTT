@@ -1542,7 +1542,73 @@ function updateNeedleGauge(b) {
   }
   const ctrlTarget = b.controller_target != null ? parseFloat(b.controller_target).toFixed(1) : "--";
   document.getElementById("gauge-fridge-label").textContent = `Target ${ctrlTarget}\u00b0C`;
+  renderFridgePending(b);
 }
+
+/* --- Pending fridge target: sent to RAPT cloud, waiting for the controller's next check-in --- */
+let _pendingState = null;  // {ctrlId, target, nextCheckin, notify}
+
+function renderFridgePending(b) {
+  const el = document.getElementById("fridge-pending");
+  if (!el) return;
+  const p = b.controller_pending;
+  if (!p || !b.controller_device_id) {
+    _pendingState = null;
+    el.style.display = "none";
+    el.innerHTML = "";
+    const card = document.getElementById("brew-fridge-target");
+    if (card) card.textContent = b.controller_target != null ? formatTemp(b.controller_target, "C") : "--";
+    return;
+  }
+  _pendingState = { ctrlId: b.controller_device_id, target: p.target, notify: p.notify,
+    nextCheckin: b.controller_next_checkin ? new Date(b.controller_next_checkin).getTime() : null };
+  const card = document.getElementById("brew-fridge-target");
+  if (card) card.textContent = `${formatTemp(b.controller_target, "C")} \u2192 ${formatTemp(p.target, "C")} pending`;
+  el.style.display = "";
+  el.innerHTML = `
+    <div class="fridge-pending-msg">
+      <strong>${formatTemp(p.target, "C")}</strong> is saved at RAPT but the controller hasn't picked it up yet.
+      It only checks in every 15 minutes. <span id="fridge-pending-clock"></span>
+    </div>
+    <div class="btn-row">
+      <button class="btn-save" id="fridge-alert-btn"></button>
+      <button class="btn-save" id="fridge-refresh-btn">Re-check RAPT now</button>
+    </div>`;
+  updatePendingAlertBtn();
+  tickPendingClock();
+  document.getElementById("fridge-alert-btn").onclick = async () => {
+    const want = !_pendingState.notify;
+    const res = await fetch(`/api/devices/${_pendingState.ctrlId}/pending/alert`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: want }) });
+    if (res.ok) {
+      _pendingState.notify = want;
+      updatePendingAlertBtn();
+      showToast(want ? "You'll get a notification when it lands (or fails)" : "Alert cancelled", "success");
+    } else { showToast("Change already landed or failed", "error"); }
+  };
+  document.getElementById("fridge-refresh-btn").onclick = async () => {
+    const res = await fetch("/api/devices/refresh", { method: "POST" });
+    const j = await res.json().catch(() => ({}));
+    showToast(j.message || "Refresh failed", res.ok ? "success" : "error");
+    if (res.ok && currentBrewId) loadBrewDetail(currentBrewId);
+  };
+}
+
+function updatePendingAlertBtn() {
+  const btn = document.getElementById("fridge-alert-btn");
+  if (btn && _pendingState) btn.textContent = _pendingState.notify ? "Alert on: tap to cancel" : "Alert me when it lands";
+}
+
+function tickPendingClock() {
+  const clock = document.getElementById("fridge-pending-clock");
+  if (!clock || !_pendingState) return;
+  if (!_pendingState.nextCheckin) { clock.textContent = ""; return; }
+  const secs = Math.round((_pendingState.nextCheckin - Date.now()) / 1000);
+  if (secs <= 0) { clock.textContent = "Check-in is due now \u2014 should apply any moment."; return; }
+  const m = Math.floor(secs / 60), s = secs % 60;
+  clock.textContent = `Next check-in in ${m}m ${String(s).padStart(2, "0")}s.`;
+}
+setInterval(tickPendingClock, 1000);
 
 function renderFeedbackStatus(b) {
   const fbEnabled = b.temp_feedback_enabled;

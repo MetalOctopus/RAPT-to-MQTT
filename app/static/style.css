@@ -2104,3 +2104,7 @@ code {
 }
 #legendary-notes-panel .legendary-stars:hover .star { color: #e6a817; }
 #legendary-notes-panel .legendary-stars .star:hover ~ .star { color: #30363d; }
+
+.fridge-pending { margin-top: 8px; padding: 10px 12px; border: 1px solid #d29922; border-radius: 6px; background: rgba(210,153,34,0.08); font-size: 13px; color: #c9d1d9; }
+.fridge-pending-msg { margin-bottom: 8px; }
+.fridge-pending .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }

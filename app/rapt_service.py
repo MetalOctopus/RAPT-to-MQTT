@@ -3,7 +3,7 @@ import time
 import threading
 import requests
 import paho.mqtt.client as mqtt
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from app.config import TOKEN_FILE
 from app.ha_discovery import HADiscovery
@@ -43,6 +43,12 @@ class RaptBridge:
         self._ctrl_last_runtimes = {}  # device_id -> {cooling, heating}
         # Home Assistant MQTT auto-discovery
         self._ha_discovery = HADiscovery(None, self._config, self._logger)
+        # Target changes accepted by the RAPT cloud but not yet applied by the device.
+        # The controller only pulls settings when it checks in (telemetryFrequency, ~15 min).
+        self._pending = {}  # device_id -> {target, sent_at, deadline, notify}
+        self._pending_lock = threading.Lock()
+        self._wake = threading.Event()  # nudges the poll loop to poll sooner
+        self._last_manual_refresh = 0.0
 
     @staticmethod
     def _rssi_bucket(rssi):
@@ -67,7 +73,31 @@ class RaptBridge:
     @property
     def devices(self):
         with self._devices_lock:
-            return dict(self._devices)
+            devs = dict(self._devices)
+        return {did: self._with_checkin_info(did, dev) for did, dev in devs.items()}
+
+    @staticmethod
+    def _parse_ts(value):
+        try:
+            ts = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            return None
+
+    def _with_checkin_info(self, device_id, dev):
+        """Copy of a device dict with pending-target and next check-in info (controllers only)."""
+        if dev.get("deviceType") == "TILT" or "telemetryFrequency" not in dev:
+            return dev
+        dev = dict(dev)
+        last = self._parse_ts(dev.get("lastActivityTime"))
+        freq = dev.get("telemetryFrequency") or 900
+        if last:
+            dev["_next_checkin"] = (last + timedelta(seconds=freq)).isoformat()
+        with self._pending_lock:
+            pending = self._pending.get(device_id)
+        if pending:
+            dev["_pending"] = dict(pending)
+        return dev
 
     def update_config(self, config):
         self._config = config
@@ -175,7 +205,15 @@ class RaptBridge:
                 except Exception as e:
                     self._logger.error(f"Unexpected error in poll loop: {e}")
 
-                self._stop_event.wait(timeout=poll_interval)
+                # Sleep until the next poll, but poll every minute while a target change is
+                # waiting to land, and wake early if asked to.
+                with self._pending_lock:
+                    waiting = bool(self._pending)
+                interval = min(poll_interval, 60) if waiting else poll_interval
+                self._wake.clear()
+                for _ in range(int(interval)):
+                    if self._stop_event.wait(timeout=1) or self._wake.is_set():
+                        break
 
         except Exception as e:
             self._logger.error(f"Bridge failed to start: {e}")
@@ -493,6 +531,8 @@ class RaptBridge:
                     controller["_nickname"] = old["_nickname"]
                 self._devices[cid] = controller
 
+        self._check_pending()
+
         controller = response[0]
         device_id = controller["id"]
         current_temp = "%.2f" % controller["temperature"]
@@ -618,6 +658,66 @@ class RaptBridge:
         self._mqtt_client.publish("homeassistant_notifications", payload)
         self._logger.info(f"Notification: {title} - {message}")
 
+    def _check_pending(self):
+        """Resolve pending target changes: landed on the device, or gave up waiting."""
+        with self._pending_lock:
+            items = list(self._pending.items())
+        now = datetime.now(timezone.utc)
+        for did, p in items:
+            with self._devices_lock:
+                dev = self._devices.get(did)
+            if not dev:
+                continue
+            name = dev.get("_nickname") or dev.get("name", "Fridge")
+            reported = dev.get("targetTemperature")
+            landed = reported is not None and abs(reported - p["target"]) <= 0.15
+            expired = now > self._parse_ts(p["deadline"])
+            if not (landed or expired):
+                continue
+            with self._pending_lock:
+                # Only resolve if not superseded by a newer target while we were checking
+                if self._pending.get(did) is not p:
+                    continue
+                del self._pending[did]
+            if landed:
+                self._logger.info(f"Target {p['target']}\u00b0C is now live on {name}.")
+                if p["notify"]:
+                    self.publish_notification(
+                        f"{name}: target applied",
+                        f"Fridge target is now {p['target']:.1f}\u00b0C.",
+                        "mdi:thermometer-check", important=True)
+            else:
+                self._logger.warning(
+                    f"Target {p['target']}\u00b0C never landed on {name} (still {reported}\u00b0C).")
+                if p["notify"]:
+                    self.publish_notification(
+                        f"{name}: target change FAILED",
+                        f"Sent {p['target']:.1f}\u00b0C but the controller still reports "
+                        f"{reported}\u00b0C. Check that it is online.",
+                        "mdi:thermometer-alert", important=True)
+
+    def set_pending_alert(self, device_id, enabled):
+        """Toggle the one-shot 'alert me' flag on a pending target change. False if none pending."""
+        with self._pending_lock:
+            p = self._pending.get(device_id)
+            if not p:
+                return False
+            p["notify"] = bool(enabled)
+        return True
+
+    def refresh_now(self):
+        """Poll the RAPT cloud immediately (rate-limited). Returns (ok, message)."""
+        if time.time() - self._last_manual_refresh < 15:
+            return False, "Refreshed a moment ago \u2014 try again in a few seconds"
+        self._last_manual_refresh = time.time()
+        try:
+            self._headers["Authorization"] = f"Bearer {self._retrieve_token()}"
+            self._update_mqtt()
+            return True, "Refreshed from RAPT"
+        except Exception as e:
+            self._logger.error(f"Manual refresh failed: {e}")
+            return False, str(e)
+
     def _set_temperature(self, target):
         """Set target temperature via MQTT command (legacy)."""
         device_id = self._update_mqtt()
@@ -644,6 +744,21 @@ class RaptBridge:
         except Exception as e:
             self._logger.error(f"RAPT API rejected target {target}\u00b0C: {e}")
             return {"sent": target, "confirmed": None, "error": str(e)}
+
+        # The cloud accepted it, but the device only picks it up at its next check-in.
+        with self._devices_lock:
+            dev = self._devices.get(device_id) or {}
+        freq = dev.get("telemetryFrequency") or 900
+        now = datetime.now(timezone.utc)
+        with self._pending_lock:
+            old = self._pending.get(device_id)
+            self._pending[device_id] = {
+                "target": target,
+                "sent_at": now.isoformat(),
+                "deadline": (now + timedelta(seconds=2 * freq + 120)).isoformat(),
+                "notify": bool(old and old["notify"]),
+            }
+        self._wake.set()
 
         # Re-poll with retries — RAPT firmware can take 10-15s to apply changes
         for attempt in range(3):

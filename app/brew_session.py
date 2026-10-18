@@ -407,6 +407,8 @@ class BrewSession:
             session["compressor_delay"] = ctrl.get("compressorDelay")
             session["cooling_hysteresis"] = ctrl.get("coolingHysteresis")
             session["heating_hysteresis"] = ctrl.get("heatingHysteresis")
+            session["controller_pending"] = ctrl.get("_pending")
+            session["controller_next_checkin"] = ctrl.get("_next_checkin")
             session["cooling_active"] = ctrl.get("_cooling_active", False)
             session["heating_active"] = ctrl.get("_heating_active", False)
 

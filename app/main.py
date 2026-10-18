@@ -363,6 +363,21 @@ def device_set_temperature(device_id):
     return jsonify({"status": "ok", "target": target})
 
 
+@app.route("/api/devices/<device_id>/pending/alert", methods=["POST"])
+def device_pending_alert(device_id):
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get("enabled", True))
+    if not bridge.set_pending_alert(device_id, enabled):
+        return jsonify({"error": "No pending target change on this device"}), 404
+    return jsonify({"status": "ok", "notify": enabled})
+
+
+@app.route("/api/devices/refresh", methods=["POST"])
+def devices_refresh():
+    ok, message = bridge.refresh_now()
+    return jsonify({"status": "ok" if ok else "error", "message": message}), (200 if ok else 429)
+
+
 @app.route("/api/devices/<device_id>/set_pid_enabled", methods=["POST"])
 def device_set_pid_enabled(device_id):
     data = request.get_json()
