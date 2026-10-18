@@ -128,6 +128,8 @@ RAPT2MQTT is free and open source. Donations help me buy brewing gear and device
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/metaloctopus)
 
+**Want something built?** Found a bug or have a feature idea? Start a thread in [Discussions](https://github.com/MetalOctopus/RAPT-to-MQTT/discussions). If you've donated and want a feature prioritised, mention it in your Ko-fi message or the Discussion and I'll bump it up the list.
+
 ## License
 
 MIT
